@@ -40,3 +40,24 @@ func TestFilterRemoteBranchesDropsSymbolicHead(t *testing.T) {
 		t.Fatalf("unexpected filtered remote branches: %v", got)
 	}
 }
+
+func TestParseTrackingInfo(t *testing.T) {
+	tests := []struct {
+		input  string
+		ahead  int
+		behind int
+	}{
+		{"[ahead 1, behind 2]", 1, 2},
+		{"[ahead 5]", 5, 0},
+		{"[behind 3]", 0, 3},
+		{"[gone]", 0, 0},
+		{"", 0, 0},
+	}
+
+	for _, tc := range tests {
+		a, b := parseTrackingInfo(tc.input)
+		if a != tc.ahead || b != tc.behind {
+			t.Errorf("parseTrackingInfo(%q) = (%d, %d); want (%d, %d)", tc.input, a, b, tc.ahead, tc.behind)
+		}
+	}
+}

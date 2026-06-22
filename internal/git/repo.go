@@ -8,6 +8,8 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
+
+	"hrllk/git-graph-tui/internal/telemetry"
 )
 
 type Repo struct {
@@ -113,26 +115,46 @@ func (r *Repo) Status(ctx context.Context) (Status, error) {
 }
 
 func (r *Repo) branchTracking(ctx context.Context, localBranches, remoteBranches []string) map[string]BranchTracking {
-	remoteSet := make(map[string]struct{}, len(remoteBranches))
-	for _, branch := range remoteBranches {
-		remoteSet[branch] = struct{}{}
-	}
 	tracking := make(map[string]BranchTracking, len(localBranches))
-	for _, branch := range localBranches {
-		remoteRef := "origin/" + branch
-		if _, ok := remoteSet[remoteRef]; !ok {
+	lines, err := r.gitLines(ctx, "for-each-ref", "--format=%(refname:short) %(upstream:track)", "refs/heads")
+	if err != nil {
+		telemetry.Log("git", "branch_tracking_error", map[string]string{"error": err.Error()})
+		return tracking
+	}
+	for _, line := range lines {
+		line = strings.TrimSpace(line)
+		if line == "" {
 			continue
 		}
-		ahead, behind, err := r.Divergence(ctx, branch, remoteRef)
-		if err != nil {
+		parts := strings.SplitN(line, " ", 2)
+		branchName := parts[0]
+		if len(parts) < 2 {
 			continue
 		}
-		tracking[branch] = BranchTracking{
-			Ahead:  ahead,
-			Behind: behind,
+		trackInfo := parts[1]
+		ahead, behind := parseTrackingInfo(trackInfo)
+		if ahead > 0 || behind > 0 {
+			tracking[branchName] = BranchTracking{
+				Ahead:  ahead,
+				Behind: behind,
+			}
 		}
 	}
 	return tracking
+}
+
+func parseTrackingInfo(track string) (ahead, behind int) {
+	track = strings.Trim(track, "[]")
+	parts := strings.Split(track, ", ")
+	for _, part := range parts {
+		part = strings.TrimSpace(part)
+		if strings.HasPrefix(part, "ahead ") {
+			fmt.Sscanf(part, "ahead %d", &ahead)
+		} else if strings.HasPrefix(part, "behind ") {
+			fmt.Sscanf(part, "behind %d", &behind)
+		}
+	}
+	return ahead, behind
 }
 
 func (r *Repo) graphCommits(ctx context.Context, localBranches, remoteBranches []string) ([]GraphCommit, error) {

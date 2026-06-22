@@ -398,6 +398,30 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 		m.repoStatus = msg.status
+		if msg.action == state.ActionCheckout {
+			rows := graphRows(msg.status)
+			rowIdx := findGraphRowByHash(rows, msg.status.Head)
+			if rowIdx >= 0 {
+				m.sectionCursor[sectionGraph] = rowIdx
+				m.graphScroll = clampScroll(rowIdx, len(rows), graphPageSize(&m))
+			}
+			syncBrowseState(&m, msg.status)
+			m.status = deriveStatus(msg.status)
+			telemetry.Log("app", "execute_action", map[string]string{
+				"action": string(msg.action),
+				"target": msg.target,
+				"head":   msg.status.Head,
+			})
+			return m, nil
+		}
+		if msg.action == state.ActionReset || msg.action == state.ActionMerge || msg.action == state.ActionRebase {
+			rows := graphRows(msg.status)
+			rowIdx := findGraphRowByHash(rows, msg.status.Head)
+			if rowIdx >= 0 {
+				m.sectionCursor[sectionGraph] = rowIdx
+				m.graphScroll = clampScroll(rowIdx, len(rows), graphPageSize(&m))
+			}
+		}
 		syncBrowseState(&m, msg.status)
 		m.status = state.New().WithOutcome(msg.action, "Completed.", executionDetail(msg.action, msg.target, msg.status), false)
 		m.status.Selected = msg.target
