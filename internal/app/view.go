@@ -281,6 +281,9 @@ func collapseConnectorLines(current graphRow) []string {
 	if width <= 1 {
 		return nil
 	}
+	if width == 2 {
+		return []string{renderGraphSpacer([]string{"|", "/"})}
+	}
 	lines := make([]string, 0, width)
 	full := make([]string, width)
 	for i := range full {
@@ -307,8 +310,8 @@ func shouldCollapseRowDisplay(row graphRow) bool {
 	if len(row.Before) <= 1 {
 		return false
 	}
-	for _, hash := range row.Before {
-		if hash != row.Commit.Hash {
+	for _, ref := range row.Before {
+		if ref.Hash != row.Commit.Hash {
 			return false
 		}
 	}

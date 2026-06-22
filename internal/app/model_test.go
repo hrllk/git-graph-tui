@@ -161,22 +161,26 @@ func TestGraphRowsExpandOnMerge(t *testing.T) {
 }
 
 func TestAdvanceGraphLanesClampsLaneBounds(t *testing.T) {
-	got := advanceGraphLanes(nil, 3, "c1", []string{"p1", "p2"}, map[string][]string{})
+	got := advanceGraphLanes([]laneRef{{Hash: "c1", Family: "main", Side: laneLocal}}, []int{0}, graphNode{Hash: "c1", Parents: []string{"p1", "p2"}}, "")
 	if len(got) == 0 {
 		t.Fatal("expected lanes to be created safely")
 	}
 }
 
 func TestAdvanceGraphLanesAllowsRootCommit(t *testing.T) {
-	got := advanceGraphLanes([]string{"root"}, 0, "root", nil, map[string][]string{})
+	got := advanceGraphLanes([]laneRef{{Hash: "root"}}, []int{0}, graphNode{Hash: "root"}, "")
 	if len(got) != 0 {
 		t.Fatalf("expected root commit to clear active lane, got %v", got)
 	}
 }
 
 func TestAdvanceGraphLanesCollapsesDuplicateCurrentLanes(t *testing.T) {
-	got := advanceGraphLanes([]string{"base", "base", "base", "base"}, 3, "base", []string{"parent"}, map[string][]string{})
-	if len(got) != 1 || got[0] != "parent" {
+	got := advanceGraphLanes([]laneRef{
+		{Hash: "base", Family: "tmp3", Side: laneLocal},
+		{Hash: "base", Family: "tmp3", Side: laneRemote},
+		{Hash: "base", Family: "main", Side: laneLocal},
+	}, []int{0, 1, 2}, graphNode{Hash: "base", Parents: []string{"parent"}}, "tmp3")
+	if len(got) != 1 || got[0].Hash != "parent" {
 		t.Fatalf("expected collapsed lanes to continue as single parent, got %v", got)
 	}
 }
@@ -230,20 +234,74 @@ func TestGraphRowsKeepsSiblingBranchesVisible(t *testing.T) {
 	}
 }
 
+func TestGraphRowsKeepsLocalAndOriginDivergedFamiliesSeparate(t *testing.T) {
+	rows := graphRows(git.Status{
+		Branch:         "tmp3",
+		Head:           "dee56f4",
+		LocalBranches:  []string{"tmp3"},
+		RemoteBranches: []string{"origin/tmp3"},
+		GraphCommits: []git.GraphCommit{
+			{Hash: "7d23746", Parents: []string{"37f0954"}, Decorations: []string{"origin/tmp3"}},
+			{Hash: "37f0954", Parents: []string{"efb164e"}},
+			{Hash: "dee56f4", Parents: []string{"efb164e"}, Decorations: []string{"HEAD -> tmp3", "tmp3"}},
+			{Hash: "efb164e", Parents: []string{"base"}},
+			{Hash: "base"},
+		},
+	})
+	if len(rows) != 5 {
+		t.Fatalf("expected 5 rows, got %d", len(rows))
+	}
+	if graphRowWidth(rows[0]) < 2 || graphRowWidth(rows[1]) < 2 || graphRowWidth(rows[2]) < 2 {
+		t.Fatalf("expected diverged local/origin history to stay split before merge-base, got widths %d, %d, %d", graphRowWidth(rows[0]), graphRowWidth(rows[1]), graphRowWidth(rows[2]))
+	}
+	if rows[0].Lane != 1 || rows[1].Lane != 1 {
+		t.Fatalf("expected origin history to stay on the right lane before local head, got lanes %d and %d", rows[0].Lane, rows[1].Lane)
+	}
+	if graphRowWidth(rows[3]) != 1 {
+		t.Fatalf("expected merge-base to collapse to one lane, got %d", graphRowWidth(rows[3]))
+	}
+	if rows[2].Lane != 0 {
+		t.Fatalf("expected checkout branch family lane to stay leftmost, got lane %d", rows[2].Lane)
+	}
+	if got := renderGraphLine(rows[0], false, false, 0, nil); !strings.Contains(got, "| *") {
+		t.Fatalf("expected top remote row to render as split branch, got %q", got)
+	}
+	if got := renderGraphLine(rows[2], false, false, 0, nil); !strings.Contains(got, "* |") {
+		t.Fatalf("expected local head row to render as split branch, got %q", got)
+	}
+}
+
 func TestRenderGraphConnectorLinesSkipsStableTransition(t *testing.T) {
-	current := graphRow{After: []string{"a", "b", "c"}}
-	next := graphRow{Before: []string{"a", "b", "c"}}
+	current := graphRow{After: []laneRef{{Hash: "a"}, {Hash: "b"}, {Hash: "c"}}}
+	next := graphRow{Before: []laneRef{{Hash: "a"}, {Hash: "b"}, {Hash: "c"}}}
 	got := renderGraphConnectorLines(current, next)
 	if len(got) != 0 {
 		t.Fatalf("expected no connector lines for stable transition, got %v", got)
 	}
 }
 
+func TestRenderGraphConnectorLinesUsesSingleLineForTwoLaneCollapse(t *testing.T) {
+	current := graphRow{After: []laneRef{{Hash: "base", Side: laneLocal}, {Hash: "base", Side: laneRemote}}}
+	next := graphRow{
+		Commit:  graphNode{Hash: "base"},
+		Before:  []laneRef{{Hash: "base", Side: laneLocal}, {Hash: "base", Side: laneRemote}},
+		After:   []laneRef{{Hash: "parent", Side: laneLocal}},
+		Lane:    0,
+	}
+	got := renderGraphConnectorLines(current, next)
+	if len(got) != 1 {
+		t.Fatalf("expected single connector line for two-lane collapse, got %v", got)
+	}
+	if !strings.Contains(got[0], "| /") {
+		t.Fatalf("expected compact connector line, got %q", got[0])
+	}
+}
+
 func TestRenderGraphLineKeepsCollapsedCommitMarker(t *testing.T) {
 	row := graphRow{
 		Commit: graphNode{Hash: "base"},
-		Before: []string{"base", "base", "base"},
-		After:  []string{"base"},
+		Before: []laneRef{{Hash: "base"}, {Hash: "base"}, {Hash: "base"}},
+		After:  []laneRef{{Hash: "base"}},
 		Lane:   2,
 	}
 	got := renderGraphLine(row, false, false, 0, nil)

@@ -118,6 +118,20 @@ type graphNode struct {
 	Decorations []string
 }
 
+type laneSide string
+
+const (
+	laneLocal  laneSide = "local"
+	laneRemote laneSide = "remote"
+	laneOther  laneSide = "other"
+)
+
+type laneRef struct {
+	Hash   string
+	Family string
+	Side   laneSide
+}
+
 func loadRepoState(repo *git.Repo) tea.Cmd {
 	return func() tea.Msg {
 		status, err := repo.Status(context.Background())
@@ -713,8 +727,8 @@ func graphNodes(rs git.Status) []graphNode {
 type graphRow struct {
 	Commit       graphNode
 	Children     []string
-	Before       []string
-	After        []string
+	Before       []laneRef
+	After        []laneRef
 	Lane         int
 	DisplayWidth int
 	Collapse     bool
@@ -725,24 +739,19 @@ func graphRows(rs git.Status) []graphRow {
 	rows := make([]graphRow, 0, len(commits))
 	children := buildChildrenMap(commits)
 	preferred := firstParentSet(commits, rs.Head)
-	active := make([]string, 0, 8)
+	seeds := buildLaneSeeds(commits, rs)
+	active := initialGraphLanes(commits, rs)
 	for _, commit := range commits {
-		lane := lastIndexOf(active, commit.Hash)
-		if lane < 0 {
-			switch {
-			case len(active) == 0:
-				active = append(active, commit.Hash)
-				lane = 0
-			case preferred[commit.Hash]:
-				active = append([]string{commit.Hash}, active...)
-				lane = 0
-			default:
-				active = append(active, commit.Hash)
-				lane = len(active) - 1
-			}
+		active = ensureLaneSeed(active, commit.Hash, seeds[commit.Hash], preferred[commit.Hash], rs.Branch)
+		matches := laneMatches(active, commit.Hash)
+		if len(matches) == 0 {
+			fallback := laneRef{Hash: commit.Hash, Side: laneOther}
+			active = ensureLaneSeed(active, commit.Hash, fallback, preferred[commit.Hash], rs.Branch)
+			matches = laneMatches(active, commit.Hash)
 		}
-		before := append([]string(nil), active...)
-		after := advanceGraphLanes(before, lane, commit.Hash, commit.Parents, children)
+		lane := chooseDisplayLane(active, matches, rs.Branch)
+		before := append([]laneRef(nil), active...)
+		after := advanceGraphLanes(before, matches, commit, rs.Branch)
 		childRefs := append([]string(nil), children[commit.Hash]...)
 		row := graphRow{
 			Commit:       commit,
@@ -756,6 +765,106 @@ func graphRows(rs git.Status) []graphRow {
 		active = after
 	}
 	return rows
+}
+
+func initialGraphLanes(commits []graphNode, rs git.Status) []laneRef {
+	if rs.Branch == "" || rs.Head == "" {
+		return make([]laneRef, 0, 8)
+	}
+	remoteTip := ""
+	remoteDecoration := "origin/" + rs.Branch
+	headPresent := false
+	for _, commit := range commits {
+		if commit.Hash == rs.Head {
+			headPresent = true
+		}
+		for _, decoration := range commit.Decorations {
+			if strings.TrimSpace(decoration) == remoteDecoration {
+				remoteTip = commit.Hash
+			}
+		}
+	}
+	if !headPresent || remoteTip == "" || remoteTip == rs.Head {
+		return make([]laneRef, 0, 8)
+	}
+	return []laneRef{
+		{Hash: rs.Head, Family: rs.Branch, Side: laneLocal},
+		{Hash: remoteTip, Family: rs.Branch, Side: laneRemote},
+	}
+}
+
+func buildLaneSeeds(commits []graphNode, rs git.Status) map[string]laneRef {
+	localSet := make(map[string]struct{}, len(rs.LocalBranches))
+	for _, branch := range rs.LocalBranches {
+		localSet[branch] = struct{}{}
+	}
+	seeds := make(map[string]laneRef, len(commits))
+	for _, commit := range commits {
+		ref, ok := preferredLaneSeed(commit, rs.Branch, localSet)
+		if !ok {
+			continue
+		}
+		ref.Hash = commit.Hash
+		seeds[commit.Hash] = ref
+	}
+	return seeds
+}
+
+func preferredLaneSeed(commit graphNode, currentBranch string, localSet map[string]struct{}) (laneRef, bool) {
+	candidates := make([]laneRef, 0, len(commit.Decorations))
+	for _, decoration := range commit.Decorations {
+		ref, ok := laneSeedFromDecoration(decoration, localSet)
+		if ok {
+			candidates = append(candidates, ref)
+		}
+	}
+	if len(candidates) == 0 {
+		return laneRef{}, false
+	}
+	best := candidates[0]
+	bestScore := laneRefScore(best, currentBranch)
+	for _, candidate := range candidates[1:] {
+		score := laneRefScore(candidate, currentBranch)
+		if score > bestScore {
+			best = candidate
+			bestScore = score
+		}
+	}
+	return best, true
+}
+
+func laneSeedFromDecoration(decoration string, localSet map[string]struct{}) (laneRef, bool) {
+	decoration = strings.TrimSpace(decoration)
+	switch {
+	case strings.HasPrefix(decoration, "HEAD -> "):
+		return laneRef{Family: strings.TrimPrefix(decoration, "HEAD -> "), Side: laneLocal}, true
+	case strings.HasPrefix(decoration, "origin/"):
+		family := strings.TrimPrefix(decoration, "origin/")
+		if _, ok := localSet[family]; ok {
+			return laneRef{Family: family, Side: laneRemote}, true
+		}
+		return laneRef{}, false
+	case strings.HasPrefix(decoration, "tag: "), decoration == "":
+		return laneRef{}, false
+	case strings.Contains(decoration, "/"):
+		return laneRef{}, false
+	default:
+		return laneRef{Family: decoration, Side: laneLocal}, true
+	}
+}
+
+func laneRefScore(ref laneRef, currentBranch string) int {
+	score := 0
+	if ref.Family == currentBranch {
+		score += 100
+	}
+	switch ref.Side {
+	case laneLocal:
+		score += 10
+	case laneRemote:
+		score += 5
+	}
+	return score
 }
 
 func buildChildrenMap(commits []graphNode) map[string][]string {
@@ -798,8 +907,8 @@ func firstParentSet(commits []graphNode, head string) map[string]bool {
 func graphRowWidth(row graphRow) int {
 	if len(row.Before) > 1 {
 		same := true
-		for _, hash := range row.Before {
-			if hash != row.Commit.Hash {
+		for _, ref := range row.Before {
+			if ref.Hash != row.Commit.Hash {
 				same = false
 				break
 			}
@@ -830,66 +939,115 @@ func indexOf(values []string, target string) int {
 	return -1
 }
 
-func lastIndexOf(values []string, target string) int {
+func lastIndexOf(values []laneRef, target string) int {
 	for i := len(values) - 1; i >= 0; i-- {
-		if values[i] == target {
+		if values[i].Hash == target {
 			return i
 		}
 	}
 	return -1
 }
 
-func advanceGraphLanes(active []string, lane int, current string, parents []string, children map[string][]string) []string {
-	if lane < 0 {
-		lane = 0
+func advanceGraphLanes(active []laneRef, matches []int, commit graphNode, currentBranch string) []laneRef {
+	if len(matches) == 0 {
+		return append([]laneRef(nil), active...)
 	}
-	if lane > len(active) {
-		lane = len(active)
+	primary := choosePrimaryMatch(active, matches, currentBranch)
+	next := make([]laneRef, 0, len(active)+len(commit.Parents))
+	skipped := make(map[int]struct{}, len(matches))
+	for _, idx := range matches {
+		skipped[idx] = struct{}{}
 	}
-	if allSameHash(active, current) {
-		next := make([]string, 0, len(parents))
-		for _, parent := range parents {
+	inserted := false
+	for idx, ref := range active {
+		if _, ok := skipped[idx]; !ok {
+			next = append(next, ref)
+			continue
+		}
+		if inserted {
+			continue
+		}
+		inserted = true
+		if len(commit.Parents) == 0 {
+			continue
+		}
+		next = append(next, laneRef{
+			Hash:   commit.Parents[0],
+			Family: primary.Family,
+			Side:   primary.Side,
+		})
+		for _, parent := range commit.Parents[1:] {
 			if parent == "" {
 				continue
 			}
-			next = append(next, parent)
-		}
-		return next
-	}
-	next := make([]string, 0, len(active)+len(parents))
-	next = append(next, active[:lane]...)
-	if len(parents) > 0 && parents[0] != "" {
-		next = append(next, parents[0])
-	}
-	if len(parents) > 1 {
-		for _, parent := range parents[1:] {
-			if parent == "" {
-				continue
-			}
-			next = append(next, parent)
+			next = append(next, laneRef{Hash: parent, Side: laneOther})
 		}
 	}
-	if lane+1 < len(active) {
-		for _, hash := range active[lane+1:] {
-			if hash == current {
-				continue
-			}
-			next = append(next, hash)
-		}
-	}
-	return next
+	return prioritizeLaneRefs(next, currentBranch)
 }
 
-func allSameHash(values []string, target string) bool {
-	if len(values) == 0 {
-		return false
+func ensureLaneSeed(active []laneRef, hash string, seed laneRef, preferred bool, currentBranch string) []laneRef {
+	if hash == "" {
+		return active
 	}
-	for _, value := range values {
-		if value != target {
-			return false
+	if idx := lastIndexOf(active, hash); idx >= 0 {
+		return active
+	}
+	seed.Hash = hash
+	switch {
+	case len(active) == 0:
+		return append(active, seed)
+	case preferred || seed.Family == currentBranch:
+		return append([]laneRef{seed}, active...)
+	default:
+		return append(active, seed)
+	}
+}
+
+func laneMatches(active []laneRef, hash string) []int {
+	matches := make([]int, 0, 2)
+	for i, ref := range active {
+		if ref.Hash == hash {
+			matches = append(matches, i)
 		}
 	}
-	return true
+	return matches
+}
+
+func chooseDisplayLane(active []laneRef, matches []int, currentBranch string) int {
+	if len(matches) == 0 {
+		return 0
+	}
+	best := matches[0]
+	bestScore := laneRefScore(active[best], currentBranch)
+	for _, idx := range matches[1:] {
+		score := laneRefScore(active[idx], currentBranch)
+		if score > bestScore {
+			best = idx
+			bestScore = score
+		}
+	}
+	return best
+}
+
+func choosePrimaryMatch(active []laneRef, matches []int, currentBranch string) laneRef {
+	return active[chooseDisplayLane(active, matches, currentBranch)]
+}
+
+func prioritizeLaneRefs(active []laneRef, currentBranch string) []laneRef {
+	if len(active) <= 1 || currentBranch == "" {
+		return active
+	}
+	preferred := make([]laneRef, 0, len(active))
+	others := make([]laneRef, 0, len(active))
+	for _, ref := range active {
+		if ref.Family == currentBranch {
+			preferred = append(preferred, ref)
+			continue
+		}
+		others = append(others, ref)
+	}
+	return append(preferred, others...)
 }
 
 func pendingChildren(children []string, current string) []string {
@@ -1216,8 +1374,8 @@ func graphPointerLane(row graphRow) int {
 	}
 	if len(row.Before) > 1 {
 		same := true
-		for _, hash := range row.Before {
-			if hash != row.Commit.Hash {
+		for _, ref := range row.Before {
+			if ref.Hash != row.Commit.Hash {
 				same = false
 				break
 			}
