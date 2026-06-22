@@ -421,10 +421,9 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.repoStatus = msg.status
 		if msg.action == state.ActionCheckout {
 			rows := graphRows(msg.status)
-			rowIdx := findGraphRowByHash(rows, msg.status.Head)
-			if rowIdx >= 0 {
-				m.sectionCursor[sectionGraph] = rowIdx
-				m.graphScroll = clampScroll(rowIdx, len(rows), graphPageSize(&m))
+			if len(rows) > 0 {
+				m.sectionCursor[sectionGraph] = 0
+				m.graphScroll = 0
 			}
 			syncBrowseState(&m, msg.status)
 			m.status = deriveStatus(msg.status)
@@ -606,6 +605,17 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					m.sectionCursor[sectionGraph] = last
 					m.graphScroll = clampScroll(last, len(rows), graphPageSize(&m))
 					m.graphLaneCursor = graphPointerLane(rows[last])
+				}
+				m.awaitingGoTop = false
+			}
+		case "H":
+			if m.status.Mode == state.ModeBrowse && m.activeSection == sectionGraph {
+				rows := graphRows(m.repoStatus)
+				rowIdx := findGraphRowByHash(rows, m.repoStatus.Head)
+				if rowIdx >= 0 {
+					m.sectionCursor[sectionGraph] = rowIdx
+					m.graphScroll = clampScroll(rowIdx, len(rows), graphPageSize(&m))
+					m.graphLaneCursor = graphPointerLane(rows[rowIdx])
 				}
 				m.awaitingGoTop = false
 			}

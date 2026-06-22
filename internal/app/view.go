@@ -29,7 +29,7 @@ func (m model) View() string {
 	left := m.renderGraphPane()
 	right := m.renderDetailPane()
 	body := lipgloss.JoinHorizontal(lipgloss.Top, left, right)
-	footer := muted.Render("tab/shift+tab: section  •  up/down: move  •  ctrl+u/d: page  •  g/G: top/bottom  •  f: fetch  •  enter/c: checkout  •  n: new branch  •  q: quit")
+	footer := muted.Render("tab/shift+tab: section  •  up/down: move  •  ctrl+u/d: page  •  g/G/H: top/bottom/head  •  f: fetch  •  enter/c: checkout  •  n: new branch  •  q: quit")
 	return body + "\n" + footer + "\n"
 }
 
@@ -143,7 +143,7 @@ func formatTargetItem(t state.TargetItem) string {
 func renderActionHelp(s state.Status) string {
 	switch s.Mode {
 	case state.ModeBrowse:
-		return "up/down: move graph pointer\nf: fetch remotes\nenter/c: checkout\nn: new branch\np: pull\nm: merge\ne: rebase\ns: reset\n"
+		return "up/down: move graph pointer\nf: fetch remotes\nenter/c: checkout\nn: new branch\np: pull\nm: merge\ne: rebase\ns: reset\nH: jump to HEAD\n"
 	case state.ModeTargetPick:
 		return "up/down: choose target\nenter: preview\nesc: back\n"
 	case state.ModeOutcomePreview:
