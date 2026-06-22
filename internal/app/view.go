@@ -44,7 +44,7 @@ func (m model) View() string {
 		totalWidth = m.width
 	}
 
-	totalHeight := int(float64(m.height) * 0.70)
+	totalHeight := int(float64(m.height) * 0.76)
 	if totalHeight < 18 {
 		totalHeight = 18
 	}
@@ -60,6 +60,8 @@ func (m model) View() string {
 		topHeight = totalHeight / 3
 	}
 	bottomHeight := totalHeight - topHeight
+	graphHeight, detailHeight := splitPaneHeights(bottomHeight)
+	graphWidth, detailWidth := splitPaneWidths(totalWidth)
 
 	// 2. 상단 Local & Remote 박스 (Branches 대박스 없이 독립 배치)
 	localWidth := leftColWidth / 2
@@ -80,12 +82,12 @@ func (m model) View() string {
 	topRow := lipgloss.JoinHorizontal(lipgloss.Top, branchesInner, tagsBox)
 
 	// 4. 하단 Graph 박스 구성
-	graphContent := m.renderGraphContent(leftColWidth-4, bottomHeight-3)
-	graphBox := m.getBoxStyle(sectionGraph).Width(leftColWidth).Height(bottomHeight).Render("Graph\n" + graphContent)
+	graphContent := m.renderGraphContent(graphWidth-4, graphHeight-3)
+	graphBox := m.getBoxStyle(sectionGraph).Width(graphWidth).Height(graphHeight).Render("Graph\n" + graphContent)
 
 	// 5. 하단 Mode (Detail Pane) 박스 구성
-	detailContent := m.renderDetailContent(rightColWidth-4, bottomHeight-3)
-	detailBox := baseBox.Width(rightColWidth).Height(bottomHeight).Render(detailContent)
+	detailContent := m.renderDetailContent(detailWidth-4, detailHeight-3)
+	detailBox := baseBox.Width(detailWidth).Height(detailHeight).Render(detailContent)
 
 	bottomRow := lipgloss.JoinHorizontal(lipgloss.Top, graphBox, detailBox)
 
@@ -120,52 +122,66 @@ func (m model) renderSectionContent(section graphSection, width, height int) str
 }
 
 func (m model) renderGraphContent(width, height int) string {
+	if height <= 0 {
+		return ""
+	}
 	rows := graphRows(m.repoStatus)
 	if len(rows) == 0 {
-		return muted.Render("  (no graph to show yet)\n")
+		return fitBlockLines([]string{muted.Render("  (no graph to show yet)")}, height)
 	}
 	start := clampScroll(m.graphScroll, len(rows), graphPageSize(&m))
 	end := start + graphPageSize(&m)
 	if end > len(rows) {
 		end = len(rows)
 	}
-	var b strings.Builder
-	b.WriteString("  " + muted.Render(fmt.Sprintf("graph page %d-%d/%d", start+1, end, len(rows))) + "\n")
+	lines := make([]string, 0, height)
+	lines = append(lines, "  "+muted.Render(fmt.Sprintf("graph page %d-%d/%d", start+1, end, len(rows))))
 	graphActive := m.activeSection == sectionGraph
 	for i := start; i < end; i++ {
-		b.WriteString(renderGraphLine(rows[i], graphActive && i == m.sectionCursor[sectionGraph], graphActive, m.graphLaneCursor, m.repoStatus.LocalBranches) + "\n")
+		if len(lines) >= height {
+			break
+		}
+		lines = append(lines, renderGraphLine(rows[i], graphActive && i == m.sectionCursor[sectionGraph], graphActive, m.graphLaneCursor, m.repoStatus.LocalBranches))
 		if i+1 < len(rows) {
 			for _, line := range renderGraphConnectorLines(rows[i], rows[i+1]) {
-				b.WriteString(line + "\n")
+				if len(lines) >= height {
+					break
+				}
+				lines = append(lines, line)
 			}
 		}
 	}
-	return b.String()
+	return fitBlockLines(lines, height)
 }
 
 func (m model) renderDetailContent(width, height int) string {
-	var content strings.Builder
-	content.WriteString(title.Render("Mode") + "\n")
-	content.WriteString(renderStatusCompact(m.status) + "\n\n")
+	if height <= 0 {
+		return ""
+	}
+	lines := make([]string, 0, height)
+	lines = append(lines, title.Render("Mode"))
+	lines = append(lines, renderStatusCompact(m.status))
+	lines = append(lines, "")
 
-	content.WriteString(title.Render("Repo") + "\n")
-	content.WriteString(fmt.Sprintf("branch: %-12s • head: %s\n", shorten(m.repoStatus.Branch, 10), shorten(m.repoStatus.Head, 7)))
-	content.WriteString(fmt.Sprintf("upstr:  %-12s • remo: %s\n", shorten(emptyDash(m.repoStatus.Upstream), 10), shorten(emptyDash(m.repoStatus.Remote), 10)))
+	lines = append(lines, title.Render("Repo"))
+	lines = append(lines, fmt.Sprintf("branch: %-12s • head: %s", shorten(m.repoStatus.Branch, 10), shorten(m.repoStatus.Head, 7)))
+	lines = append(lines, fmt.Sprintf("upstr:  %-12s • remo: %s", shorten(emptyDash(m.repoStatus.Upstream), 10), shorten(emptyDash(m.repoStatus.Remote), 10)))
 
 	focus := currentGraphFocus(m.repoStatus, m.sectionCursor[sectionGraph])
 	if focus.Hash != "" {
-		content.WriteString(fmt.Sprintf("focus:  %s\n", shorten(focusLineSummary(focus), width-2)))
+		lines = append(lines, fmt.Sprintf("focus:  %s", shorten(focusLineSummary(focus), width-2)))
 	}
-	content.WriteString(fmt.Sprintf("active: %s\n", sectionName(m.activeSection)))
+	lines = append(lines, fmt.Sprintf("active: %s", sectionName(m.activeSection)))
 	if m.status.Selected != "" {
-		content.WriteString(fmt.Sprintf("select: %s\n", shorten(m.status.Selected, width-2)))
+		lines = append(lines, fmt.Sprintf("select: %s", shorten(m.status.Selected, width-2)))
 	}
 	if m.branchOpen {
-		content.WriteString(fmt.Sprintf("new br: %s (base: %s)\n", m.branchDraft, shorten(m.branchBase, 7)))
+		lines = append(lines, fmt.Sprintf("new br: %s (base: %s)", m.branchDraft, shorten(m.branchBase, 7)))
 	}
-	content.WriteString("\n" + title.Render("Actions") + "\n")
-	content.WriteString(renderActionHelpCompact(m.status))
-	return content.String()
+	lines = append(lines, "")
+	lines = append(lines, title.Render("Actions"))
+	lines = append(lines, strings.Split(renderActionHelpCompact(m.status), "\n")...)
+	return fitBlockLines(lines, height)
 }
 
 func renderStatusCompact(s state.Status) string {
@@ -522,6 +538,38 @@ func paneWidth(total int, ratio float64) int {
 		return 0
 	}
 	return int(float64(total) * ratio)
+}
+
+func splitPaneWidths(total int) (int, int) {
+	if total <= 0 {
+		return 0, 0
+	}
+	left := total / 2
+	right := total - left
+	return left, right
+}
+
+func splitPaneHeights(total int) (int, int) {
+	if total <= 0 {
+		return 0, 0
+	}
+	top := total / 2
+	bottom := total - top
+	return top, bottom
+}
+
+func fitBlockLines(lines []string, height int) string {
+	if height <= 0 {
+		return ""
+	}
+	if len(lines) > height {
+		lines = lines[:height]
+	}
+	if len(lines) < height {
+		padding := make([]string, height-len(lines))
+		lines = append(lines, padding...)
+	}
+	return strings.Join(lines, "\n")
 }
 
 func max(a, b int) int {

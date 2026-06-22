@@ -168,6 +168,86 @@ func TestWindowResizeDoesNotIncreaseInitialGraphLoadLimit(t *testing.T) {
 	}
 }
 
+func TestSplitPaneWidthsAreBalanced(t *testing.T) {
+	left, right := splitPaneWidths(101)
+	if left+right != 101 {
+		t.Fatalf("expected widths to sum to total, got %d and %d", left, right)
+	}
+	if diff := right - left; diff < 0 || diff > 1 {
+		t.Fatalf("expected pane widths to stay balanced, got %d and %d", left, right)
+	}
+}
+
+func TestSplitPaneHeightsAreBalanced(t *testing.T) {
+	top, bottom := splitPaneHeights(99)
+	if top+bottom != 99 {
+		t.Fatalf("expected heights to sum to total, got %d and %d", top, bottom)
+	}
+	if diff := bottom - top; diff < 0 || diff > 1 {
+		t.Fatalf("expected pane heights to stay balanced, got %d and %d", top, bottom)
+	}
+}
+
+func TestGraphPageSizeMatchesGraphPaneHeight(t *testing.T) {
+	m := model{height: 80}
+	got := graphPageSize(&m)
+	if got <= 0 {
+		t.Fatalf("expected positive graph page size, got %d", got)
+	}
+	totalHeight := int(float64(m.height) * 0.76)
+	if totalHeight > m.height-2 {
+		totalHeight = m.height - 2
+	}
+	topHeight := 8
+	if totalHeight > 30 {
+		topHeight = totalHeight / 3
+	}
+	bottomHeight := totalHeight - topHeight
+	graphHeight, _ := splitPaneHeights(bottomHeight)
+	want := graphHeight - 3
+	if want < 3 {
+		want = 3
+	}
+	if got != want {
+		t.Fatalf("expected graph page size %d, got %d", want, got)
+	}
+}
+
+func TestRenderGraphContentFixedHeight(t *testing.T) {
+	m := model{
+		status: state.New().WithBrowse(),
+		repoStatus: git.Status{
+			GraphCommits: []git.GraphCommit{
+				{Hash: "c2", Parents: []string{"c1"}},
+				{Hash: "c1"},
+			},
+		},
+	}
+	got := m.renderGraphContent(40, 6)
+	if lines := strings.Split(got, "\n"); len(lines) != 6 {
+		t.Fatalf("expected graph content to fit fixed height, got %d lines: %q", len(lines), got)
+	}
+}
+
+func TestRenderDetailContentFixedHeight(t *testing.T) {
+	m := model{
+		status: state.New().WithBrowse(),
+		repoStatus: git.Status{
+			Root:          "/repo",
+			Branch:        "main",
+			Head:          "abc1234",
+			Upstream:      "origin/main",
+			Remote:        "origin",
+			LocalBranches: []string{"main"},
+		},
+		sectionCursor: map[graphSection]int{sectionGraph: 0},
+	}
+	got := m.renderDetailContent(40, 8)
+	if lines := strings.Split(got, "\n"); len(lines) != 8 {
+		t.Fatalf("expected detail content to fit fixed height, got %d lines: %q", len(lines), got)
+	}
+}
+
 func TestFetchKeyDoesNotForceLoadingMode(t *testing.T) {
 	m := model{
 		status:        state.New().WithBrowse(),

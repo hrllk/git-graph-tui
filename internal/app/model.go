@@ -1447,7 +1447,7 @@ func clampScroll(current, total, page int) int {
 }
 
 func graphPageSize(m *model) int {
-	totalHeight := int(float64(m.height) * 0.70)
+	totalHeight := int(float64(m.height) * 0.76)
 	if totalHeight < 18 {
 		totalHeight = 18
 	}
@@ -1459,7 +1459,8 @@ func graphPageSize(m *model) int {
 		topHeight = totalHeight / 3
 	}
 	bottomHeight := totalHeight - topHeight
-	size := bottomHeight - 3
+	graphHeight, _ := splitPaneHeights(bottomHeight)
+	size := graphHeight - 3
 	if size < 3 {
 		size = 3
 	}
