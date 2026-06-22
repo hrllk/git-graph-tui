@@ -16,7 +16,9 @@ var (
 	accent      = lipgloss.NewStyle().Foreground(lipgloss.Color("205")).Bold(true)
 	warn        = lipgloss.NewStyle().Foreground(lipgloss.Color("203")).Bold(true)
 	ok          = lipgloss.NewStyle().Foreground(lipgloss.Color("42")).Bold(true)
-	headMark    = lipgloss.NewStyle().Foreground(lipgloss.Color("226")).Bold(true)
+	headMark    = lipgloss.NewStyle().Foreground(lipgloss.Color("42")).Bold(true)
+	branchMark  = lipgloss.NewStyle().Foreground(lipgloss.Color("226")).Bold(true)
+	pointerMark = lipgloss.NewStyle().Foreground(lipgloss.Color("226")).Bold(true)
 	localColor  = lipgloss.NewStyle().Foreground(lipgloss.Color("70"))
 	remoteColor = lipgloss.NewStyle().Foreground(lipgloss.Color("81"))
 	tagColor    = lipgloss.NewStyle().Foreground(lipgloss.Color("141"))
@@ -211,10 +213,16 @@ func renderRefSection(label string, refs []string, kind state.TargetKind, cursor
 
 func renderGraphLine(row graphRow, selected bool, graphActive bool, laneCursor int, localBranches []string) string {
 	hash := fmt.Sprintf("%-8s", shorten(row.Commit.Hash, 7))
-	refs := fmt.Sprintf("%-16s", formatCompactDecorations(row.Commit.Decorations, localBranches))
+	refInfo := compactDecorationInfo(row.Commit.Decorations, localBranches)
+	refs := fmt.Sprintf("%-16s", refInfo.Text)
 	isHead := hasHeadDecoration(row.Commit.Decorations)
 	width := graphRowWidth(row)
 	lane := displayLane(row, width)
+	cursorLane := laneCursor
+	if width > 0 && cursorLane >= width {
+		cursorLane = width - 1
+	}
+	pointerFocused := graphActive && selected && cursorLane == lane
 	cells := make([]string, 0, width)
 	for i := 0; i < width; i++ {
 		cell := " "
@@ -226,22 +234,21 @@ func renderGraphLine(row graphRow, selected bool, graphActive bool, laneCursor i
 		case beforeActive || afterActive:
 			cell = "|"
 		}
-		cursorLane := laneCursor
-		if width > 0 && cursorLane >= width {
-			cursorLane = width - 1
-		}
-		if graphActive && selected && i == cursorLane {
-			cell = highlight.Render(cell)
-		} else if graphActive && i == cursorLane {
-			cell = accent.Render(cell)
-		} else if isHead && i == lane {
+		if isHead && i == lane {
 			cell = headMark.Render(cell)
+		} else if pointerFocused && i == lane {
+			cell = pointerMark.Render(cell)
 		}
 		cells = append(cells, cell)
 	}
+	if isHead {
+		refs = headMark.Render(refs)
+	} else if pointerFocused && refInfo.HasBranch {
+		refs = branchMark.Render(refs)
+	}
 	line := hash + " " + refs + " " + strings.Join(cells, " ")
 	if selected {
-		return accent.Render("> ") + line
+		return "> " + line
 	}
 	return "  " + line
 }
@@ -324,8 +331,17 @@ func hasHeadDecoration(decorations []string) bool {
 }
 
 func formatCompactDecorations(decorations []string, localBranches []string) string {
+	return compactDecorationInfo(decorations, localBranches).Text
+}
+
+type decorationInfo struct {
+	Text      string
+	HasBranch bool
+}
+
+func compactDecorationInfo(decorations []string, localBranches []string) decorationInfo {
 	if len(decorations) == 0 {
-		return "-"
+		return decorationInfo{Text: "-"}
 	}
 	localSet := make(map[string]struct{}, len(localBranches))
 	for _, branch := range localBranches {
@@ -336,6 +352,7 @@ func formatCompactDecorations(decorations []string, localBranches []string) stri
 	localParts := make([]string, 0, len(decorations))
 	tagParts := make([]string, 0, len(decorations))
 	seen := make(map[string]struct{})
+	hasBranch := false
 	for _, decoration := range decorations {
 		token, kind := compactDecoration(decoration, localSet)
 		if token == "" {
@@ -347,10 +364,13 @@ func formatCompactDecorations(decorations []string, localBranches []string) stri
 		seen[token] = struct{}{}
 		switch kind {
 		case "head":
+			hasBranch = true
 			parts = append(parts, token)
 		case "remote":
+			hasBranch = true
 			remoteParts = append(remoteParts, token)
 		case "local":
+			hasBranch = true
 			localParts = append(localParts, token)
 		case "tag":
 			tagParts = append(tagParts, token)
@@ -360,14 +380,14 @@ func formatCompactDecorations(decorations []string, localBranches []string) stri
 	parts = append(parts, localParts...)
 	parts = append(parts, tagParts...)
 	if len(parts) == 0 {
-		return "-"
+		return decorationInfo{Text: "-", HasBranch: false}
 	}
 	joined := strings.Join(parts, ", ")
 	runes := []rune(joined)
 	if len(runes) <= 16 {
-		return joined
+		return decorationInfo{Text: joined, HasBranch: hasBranch}
 	}
-	return string(runes[:16])
+	return decorationInfo{Text: string(runes[:16]), HasBranch: hasBranch}
 }
 
 func compactDecoration(decoration string, localSet map[string]struct{}) (string, string) {

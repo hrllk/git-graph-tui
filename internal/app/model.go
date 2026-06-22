@@ -523,6 +523,10 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				if m.awaitingGoTop {
 					m.sectionCursor[sectionGraph] = 0
 					m.graphScroll = 0
+					rows := graphRows(m.repoStatus)
+					if len(rows) > 0 {
+						m.graphLaneCursor = graphPointerLane(rows[0])
+					}
 					m.awaitingGoTop = false
 					return m, nil
 				}
@@ -535,7 +539,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					last := len(rows) - 1
 					m.sectionCursor[sectionGraph] = last
 					m.graphScroll = clampScroll(last, len(rows), graphPageSize(&m))
-					m.graphLaneCursor = clampLaneCursor(m.graphLaneCursor, rows[last])
+					m.graphLaneCursor = graphPointerLane(rows[last])
 				}
 				m.awaitingGoTop = false
 			}
@@ -919,7 +923,7 @@ func syncBrowseState(m *model, rs git.Status) {
 			row = clampCursor(m.sectionCursor[sectionGraph], len(rows))
 		}
 		m.sectionCursor[sectionGraph] = row
-		m.graphLaneCursor = clampLaneCursor(m.graphLaneCursor, rows[row])
+		m.graphLaneCursor = graphPointerLane(rows[row])
 	}
 }
 
@@ -1030,7 +1034,7 @@ func moveBrowseCursor(m model, delta int) model {
 		}
 		rows := graphRows(m.repoStatus)
 		if cursor >= 0 && cursor < len(rows) {
-			m.graphLaneCursor = clampLaneCursor(m.graphLaneCursor, rows[cursor])
+			m.graphLaneCursor = graphPointerLane(rows[cursor])
 		}
 	case sectionCurrent, sectionLocal, sectionRemote, sectionTags:
 		items := sectionTargets(m.repoStatus, m.activeSection)
@@ -1076,7 +1080,7 @@ func pageBrowseGraph(m model, pages int) model {
 	m.graphScroll = clampScroll(cursor, total, page)
 	rows := graphRows(m.repoStatus)
 	if cursor >= 0 && cursor < len(rows) {
-		m.graphLaneCursor = clampLaneCursor(m.graphLaneCursor, rows[cursor])
+		m.graphLaneCursor = graphPointerLane(rows[cursor])
 	}
 	return m
 }
@@ -1160,7 +1164,7 @@ func moveLanePointer(current int, row graphRow, delta int) int {
 		return 0
 	}
 	if current < 0 {
-		current = row.Lane
+		current = graphPointerLane(row)
 	}
 	next := current + delta
 	if next < 0 {
@@ -1181,6 +1185,32 @@ func clampLaneCursor(current int, row graphRow) int {
 		return min(row.Lane, maxLane)
 	}
 	return current
+}
+
+func graphPointerLane(row graphRow) int {
+	maxLane := graphRowWidth(row) - 1
+	if maxLane < 0 {
+		return 0
+	}
+	if len(row.Before) > 1 {
+		same := true
+		for _, hash := range row.Before {
+			if hash != row.Commit.Hash {
+				same = false
+				break
+			}
+		}
+		if same {
+			return 0
+		}
+	}
+	if row.Lane < 0 {
+		return 0
+	}
+	if row.Lane > maxLane {
+		return maxLane
+	}
+	return row.Lane
 }
 
 func clampCursor(current, total int) int {
