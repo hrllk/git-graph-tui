@@ -41,6 +41,53 @@ func TestFilterRemoteBranchesDropsSymbolicHead(t *testing.T) {
 	}
 }
 
+func TestGraphLogArgsUsesLocalBranchesOnly(t *testing.T) {
+	got := graphLogArgs([]string{"main", "origin/main"}, 40)
+	wantContains := []string{
+		"log",
+		"--graph",
+		"--decorate=short",
+		"--decorate-refs=HEAD",
+		"--decorate-refs=refs/heads/*",
+		"--decorate-refs=refs/remotes/*",
+		"--topo-order",
+		"--format=%x00%H%x1f%P%x1f%ar%x1f%an%x1f%D%x1f%s",
+		"--max-count=40",
+		"main",
+		"origin/main",
+	}
+	for _, want := range wantContains {
+		found := false
+		for _, arg := range got {
+			if arg == want {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Fatalf("expected graph log args to contain %q, got %v", want, got)
+		}
+	}
+	for _, arg := range got {
+		if arg == "--all" || arg == "--branches" {
+			t.Fatalf("expected graph log args to exclude broad ref selectors, got %v", got)
+		}
+	}
+}
+
+func TestGraphRefsIncludesTrackedUpstreams(t *testing.T) {
+	got := graphRefs([]string{"main", "develop", "tmp1"}, map[string]string{"main": "origin/main", "develop": "", "tmp1": "origin/tmp1"})
+	want := []string{"main", "origin/main", "develop", "tmp1", "origin/tmp1"}
+	if len(got) != len(want) {
+		t.Fatalf("expected %d refs, got %v", len(want), got)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Fatalf("unexpected refs at %d: got %q want %q (all=%v)", i, got[i], want[i], got)
+		}
+	}
+}
+
 func TestParseTrackingInfo(t *testing.T) {
 	tests := []struct {
 		input  string

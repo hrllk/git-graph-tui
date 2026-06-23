@@ -1205,7 +1205,7 @@ func TestPushSetUpstreamTriggeredWhenNoUpstream(t *testing.T) {
 	if got.status.Mode != state.ModeLoading || got.status.Message != "Fetching before push..." {
 		t.Fatalf("expected Fetching before push... loading mode, got %s", got.status.Mode)
 	}
-	
+
 	status := got.repoStatus
 	gotModel2, cmd2 := got.Update(pushFetchedMsg{status: status})
 	got2 := gotModel2.(model)
@@ -1280,13 +1280,13 @@ func TestPushRejectedShowsForcePushConfirmAndHighlights(t *testing.T) {
 		},
 		handshakeCommits: make(map[string]bool),
 	}
-	
+
 	msg := executedMsg{
 		action: state.ActionPush,
 		target: "develop",
 		err:    fmt.Errorf("git push: exit status 1: error: failed to push some refs to '...' [rejected - non-fast-forward]"),
 	}
-	
+
 	gotModel, cmd := m.Update(msg)
 	got := gotModel.(model)
 	if cmd != nil {
@@ -1363,7 +1363,7 @@ func TestResetConfirmExecuted(t *testing.T) {
 		},
 	}
 	m.status.Selected = "c1"
-	
+
 	gotModel, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'y'}})
 	got := gotModel.(model)
 	if cmd == nil {
@@ -1428,7 +1428,7 @@ func TestResetExecutedSuccessfullyReturnsToBrowse(t *testing.T) {
 			HasCommits: true,
 		},
 	}
-	
+
 	msg := executedMsg{
 		action: state.ActionReset,
 		target: "c2",
@@ -1443,7 +1443,7 @@ func TestResetExecutedSuccessfullyReturnsToBrowse(t *testing.T) {
 			},
 		},
 	}
-	
+
 	gotModel, cmd := m.Update(msg)
 	got := gotModel.(model)
 	if cmd != nil {

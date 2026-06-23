@@ -19,33 +19,33 @@ type Repo struct {
 }
 
 type Status struct {
-	Root            string
-	Branch          string
-	Head            string
-	DefaultBranch   string
-	Upstream        string
-	Remote          string
-	Detached        bool
-	HasCommits      bool
-	Graph           []string
-	GraphCommits    []GraphCommit
-	Branches        []string
-	LocalBranches   []string
-	BranchUpstreams map[string]string
-	Tracking        map[string]BranchTracking
-	RemoteBranches  []string
-	Tags            []string
-	Remotes         []string
-	EmptyRepo       bool
-	NoUpstream      bool
-	NoRemote        bool
-	WorktreeDirty   bool
-	MergeInProgress bool
-	RebaseInProgress bool
-	ConflictTarget   string
+	Root                  string
+	Branch                string
+	Head                  string
+	DefaultBranch         string
+	Upstream              string
+	Remote                string
+	Detached              bool
+	HasCommits            bool
+	Graph                 []string
+	GraphCommits          []GraphCommit
+	Branches              []string
+	LocalBranches         []string
+	BranchUpstreams       map[string]string
+	Tracking              map[string]BranchTracking
+	RemoteBranches        []string
+	Tags                  []string
+	Remotes               []string
+	EmptyRepo             bool
+	NoUpstream            bool
+	NoRemote              bool
+	WorktreeDirty         bool
+	MergeInProgress       bool
+	RebaseInProgress      bool
+	ConflictTarget        string
 	ConflictTargetSubject string
-	ErrorMessage    string
-	LoadingReason   string
+	ErrorMessage          string
+	LoadingReason         string
 }
 
 type Runner struct {
@@ -91,7 +91,7 @@ func (r *Repo) Status(ctx context.Context, limit int) (Status, error) {
 	branchUpstreams := r.branchUpstreams(ctx)
 	tracking := r.branchTracking(ctx, localBranches, remoteBranches)
 	tags, _ := r.gitLines(ctx, "for-each-ref", "--format=%(refname:short)", "refs/tags")
-	graphCommits, graphErr := r.graphCommits(ctx, localBranches, remoteBranches, limit)
+	graphCommits, graphErr := r.graphCommits(ctx, localBranches, branchUpstreams, limit)
 	if graphErr != nil && !isNoCommits(graphErr) {
 		return Status{ErrorMessage: graphErr.Error()}, graphErr
 	}
@@ -147,29 +147,29 @@ func (r *Repo) Status(ctx context.Context, limit int) (Status, error) {
 	}
 
 	return Status{
-		Root:            r.root,
-		Branch:          branch,
-		Head:            head,
-		DefaultBranch:   defaultBranch,
-		Upstream:        upstream,
-		Remote:          strings.Join(remotes, ", "),
-		Detached:        branch == "HEAD",
-		HasCommits:      !emptyRepo,
-		GraphCommits:    graphCommits,
-		Branches:        branches,
-		LocalBranches:   localBranches,
-		BranchUpstreams: branchUpstreams,
-		Tracking:        tracking,
-		RemoteBranches:  remoteBranches,
-		Tags:            tags,
-		Remotes:         remotes,
-		EmptyRepo:       emptyRepo,
-		NoUpstream:      noUpstream,
-		NoRemote:        noRemote,
-		WorktreeDirty:   worktreeDirty,
-		MergeInProgress: mergeInProgress,
-		RebaseInProgress: rebaseInProgress,
-		ConflictTarget:   conflictTarget,
+		Root:                  r.root,
+		Branch:                branch,
+		Head:                  head,
+		DefaultBranch:         defaultBranch,
+		Upstream:              upstream,
+		Remote:                strings.Join(remotes, ", "),
+		Detached:              branch == "HEAD",
+		HasCommits:            !emptyRepo,
+		GraphCommits:          graphCommits,
+		Branches:              branches,
+		LocalBranches:         localBranches,
+		BranchUpstreams:       branchUpstreams,
+		Tracking:              tracking,
+		RemoteBranches:        remoteBranches,
+		Tags:                  tags,
+		Remotes:               remotes,
+		EmptyRepo:             emptyRepo,
+		NoUpstream:            noUpstream,
+		NoRemote:              noRemote,
+		WorktreeDirty:         worktreeDirty,
+		MergeInProgress:       mergeInProgress,
+		RebaseInProgress:      rebaseInProgress,
+		ConflictTarget:        conflictTarget,
 		ConflictTargetSubject: conflictTargetSubject,
 	}, nil
 }
@@ -242,14 +242,12 @@ func parseTrackingInfo(track string) (ahead, behind int) {
 	return ahead, behind
 }
 
-func (r *Repo) graphCommits(ctx context.Context, localBranches, remoteBranches []string, limit int) ([]GraphCommit, error) {
-	if len(localBranches) == 0 && len(remoteBranches) == 0 {
+func (r *Repo) graphCommits(ctx context.Context, localBranches []string, branchUpstreams map[string]string, limit int) ([]GraphCommit, error) {
+	graphRefs := graphRefs(localBranches, branchUpstreams)
+	if len(graphRefs) == 0 {
 		return nil, nil
 	}
-	args := []string{"log", "--graph", "--decorate=short", "--topo-order", "--all", "--format=%x00%H%x1f%P%x1f%ar%x1f%an%x1f%D%x1f%s"}
-	if limit > 0 {
-		args = append(args, fmt.Sprintf("--max-count=%d", limit))
-	}
+	args := graphLogArgs(graphRefs, limit)
 	lines, err := r.gitLines(ctx, args...)
 	if err != nil {
 		return nil, err
@@ -288,6 +286,47 @@ func (r *Repo) graphCommits(ctx context.Context, localBranches, remoteBranches [
 		}
 	}
 	return commits, nil
+}
+
+func graphRefs(localBranches []string, branchUpstreams map[string]string) []string {
+	refs := make([]string, 0, len(localBranches)+len(branchUpstreams))
+	seen := make(map[string]struct{}, len(localBranches)+len(branchUpstreams))
+	add := func(ref string) {
+		ref = strings.TrimSpace(ref)
+		if ref == "" {
+			return
+		}
+		if _, ok := seen[ref]; ok {
+			return
+		}
+		seen[ref] = struct{}{}
+		refs = append(refs, ref)
+	}
+	for _, branch := range localBranches {
+		add(branch)
+		if upstream := branchUpstreams[branch]; upstream != "" {
+			add(upstream)
+		}
+	}
+	return refs
+}
+
+func graphLogArgs(refs []string, limit int) []string {
+	args := []string{
+		"log",
+		"--graph",
+		"--decorate=short",
+		"--decorate-refs=HEAD",
+		"--decorate-refs=refs/heads/*",
+		"--decorate-refs=refs/remotes/*",
+		"--topo-order",
+		"--format=%x00%H%x1f%P%x1f%ar%x1f%an%x1f%D%x1f%s",
+	}
+	if limit > 0 {
+		args = append(args, fmt.Sprintf("--max-count=%d", limit))
+	}
+	args = append(args, refs...)
+	return args
 }
 
 func filterRemoteBranches(remoteBranches []string) []string {

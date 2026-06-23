@@ -10,15 +10,15 @@ import (
 )
 
 var (
-	border      = lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).Padding(0, 1)
-	baseBox     = lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).BorderForeground(lipgloss.Color("240")).Padding(0, 1)
-	activeBox   = lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).BorderForeground(lipgloss.Color("205")).Padding(0, 1)
-	title       = lipgloss.NewStyle().Bold(true)
-	muted       = lipgloss.NewStyle().Foreground(lipgloss.Color("241"))
-	accent      = lipgloss.NewStyle().Foreground(lipgloss.Color("205")).Bold(true)
-	warn        = lipgloss.NewStyle().Foreground(lipgloss.Color("205")).Bold(true)
-	ok          = lipgloss.NewStyle().Foreground(lipgloss.Color("42")).Bold(true)
-	disabled    = lipgloss.NewStyle().Foreground(lipgloss.Color("245"))
+	border        = lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).Padding(0, 1)
+	baseBox       = lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).BorderForeground(lipgloss.Color("240")).Padding(0, 1)
+	activeBox     = lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).BorderForeground(lipgloss.Color("205")).Padding(0, 1)
+	title         = lipgloss.NewStyle().Bold(true)
+	muted         = lipgloss.NewStyle().Foreground(lipgloss.Color("241"))
+	accent        = lipgloss.NewStyle().Foreground(lipgloss.Color("205")).Bold(true)
+	warn          = lipgloss.NewStyle().Foreground(lipgloss.Color("205")).Bold(true)
+	ok            = lipgloss.NewStyle().Foreground(lipgloss.Color("42")).Bold(true)
+	disabled      = lipgloss.NewStyle().Foreground(lipgloss.Color("245"))
 	headMark      = lipgloss.NewStyle().Foreground(lipgloss.Color("118")).Bold(true)
 	branchMark    = lipgloss.NewStyle().Foreground(lipgloss.Color("226")).Bold(true)
 	pointerMark   = lipgloss.NewStyle().Foreground(lipgloss.Color("226")).Bold(true)
@@ -82,7 +82,7 @@ func (m model) View() string {
 
 	// 4. 하단 Graph 박스 구성
 	graphContent := m.renderGraphContent(graphWidth-4, graphHeight-3)
-	graphBox := m.getBoxStyle(sectionGraph).Width(graphWidth).Height(graphHeight).Render("Graph\n" + graphContent)
+	graphBox := m.getBoxStyle(sectionGraph).Width(graphWidth).Height(graphHeight).Render("Graph (local branches)\n" + graphContent)
 
 	// 5. 하단 Mode (Detail Pane) 박스 구성
 	detailContent := m.renderDetailContent(detailWidth-4, detailHeight-3)
@@ -115,8 +115,8 @@ func (m model) View() string {
 		}
 		popupContent := popupBox.Render(
 			titleStyle.Render(popupTitle) + "\n\n" +
-			descStyle.Render(m.status.Detail) + "\n\n" +
-			helpStyle.Render(helpText),
+				descStyle.Render(m.status.Detail) + "\n\n" +
+				helpStyle.Render(helpText),
 		)
 		centeredBody = overlayPopup(centeredBody, popupContent)
 	}
