@@ -316,7 +316,7 @@ func executeAction(repo *git.Repo, action state.Action, target string, limit int
 		case state.ActionRebase:
 			_, err = repo.Run("rebase", target)
 		case state.ActionReset:
-			_, err = repo.Run("reset", "--soft", target)
+			_, err = repo.Run("reset", "--hard", target)
 		default:
 			err = fmt.Errorf("unsupported action %q", action)
 		}
@@ -608,7 +608,24 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			})
 			return m, nil
 		}
-		if msg.action == state.ActionReset || msg.action == state.ActionMerge || msg.action == state.ActionRebase {
+		if msg.action == state.ActionReset {
+			rows := graphRows(msg.status)
+			rowIdx := findGraphRowByHash(rows, msg.status.Head)
+			if rowIdx >= 0 {
+				m.sectionCursor[sectionGraph] = rowIdx
+				m.graphScroll = clampScroll(rowIdx, len(rows), graphPageSize(&m))
+			}
+			syncBrowseState(&m, msg.status)
+			m.status = deriveStatus(msg.status)
+			m.status.Message = fmt.Sprintf("Hard reset completed to %s.", shorten(msg.target, 7))
+			telemetry.Log("app", "execute_action", map[string]string{
+				"action": string(msg.action),
+				"target": msg.target,
+				"head":   msg.status.Head,
+			})
+			return m, nil
+		}
+		if msg.action == state.ActionMerge || msg.action == state.ActionRebase {
 			rows := graphRows(msg.status)
 			rowIdx := findGraphRowByHash(rows, msg.status.Head)
 			if rowIdx >= 0 {
@@ -688,6 +705,10 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				} else if action == state.ActionForcePush {
 					m.status = state.New().WithLoading("Running force push...")
 					return m, executeForcePush(m.repo, m.repoStatus.Branch, m.commitLimit)
+				} else if action == state.ActionReset {
+					target := m.status.Selected
+					m.status = state.New().WithLoading("Running hard reset...")
+					return m, executeAction(m.repo, action, target, m.commitLimit)
 				}
 				m.status = deriveStatus(m.repoStatus)
 				return m, nil
@@ -758,7 +779,13 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					m.status = state.New().WithBlocked(state.BlockUnknown, "No reset target.", "Move the pointer onto a commit line.")
 					return m, nil
 				}
-				m.status = state.New().WithOutcome(state.ActionReset, "Reset preview from the current graph focus.", "Target: "+focus.Hash+"  |  Use enter to reset to this commit.", true)
+				titleMsg := "Hard reset to commit?"
+				detailMsg := fmt.Sprintf("This will reset your HEAD, index, and working tree. Any uncommitted changes will be lost. Target commit: %s. Continue?", focus.Hash)
+				if m.repoStatus.WorktreeDirty {
+					detailMsg = fmt.Sprintf("⚠️ WARNING: You have uncommitted changes in your working tree! Hard reset will permanently OVERWRITE and LOSE all uncommitted changes. Target commit: %s. Continue?", focus.Hash)
+				}
+				m.status = m.status.WithConfirm(state.ActionReset, titleMsg, detailMsg)
+				m.status.Title = titleMsg
 				m.status.Selected = focus.Hash
 				return m, nil
 			}
@@ -2055,7 +2082,7 @@ func executionDetail(action state.Action, target string, rs git.Status) string {
 	case state.ActionRebase:
 		return "Rebase complete. The branch was replayed on top of " + target + "."
 	case state.ActionReset:
-		return "Reset complete. HEAD now points at " + target + "."
+		return "Hard reset complete. HEAD now points at " + target + "."
 	default:
 		return "Action complete."
 	}

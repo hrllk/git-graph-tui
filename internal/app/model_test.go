@@ -1213,3 +1213,157 @@ func TestPushRejectedShowsForcePushConfirmAndHighlights(t *testing.T) {
 		t.Fatalf("expected branch name to be dynamically included, got %q", got.status.Detail)
 	}
 }
+
+func TestResetTriggeredConfirmModal(t *testing.T) {
+	m := model{
+		status:        state.New().WithBrowse(),
+		activeSection: sectionGraph,
+		sectionCursor: map[graphSection]int{
+			sectionGraph:   0,
+			sectionCurrent: 0,
+			sectionRemote:  0,
+			sectionTags:    0,
+		},
+		repoStatus: git.Status{
+			Root:       "/repo",
+			Branch:     "main",
+			Head:       "c1",
+			HasCommits: true,
+			GraphCommits: []git.GraphCommit{
+				{Hash: "c1", Subject: "Commit 1"},
+			},
+		},
+	}
+	gotModel, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'s'}})
+	got := gotModel.(model)
+	if cmd != nil {
+		t.Fatal("expected no immediate cmd execution for reset, should wait for confirm")
+	}
+	if got.status.Mode != state.ModeConfirm {
+		t.Fatalf("expected confirm mode, got %s", got.status.Mode)
+	}
+	if got.status.Action != state.ActionReset {
+		t.Fatalf("expected ActionReset, got %s", got.status.Action)
+	}
+	if !strings.Contains(got.status.Title, "Hard reset to commit?") {
+		t.Fatalf("expected hard reset title, got %q", got.status.Title)
+	}
+	if got.status.Selected != "c1" {
+		t.Fatalf("expected target c1 to be selected, got %q", got.status.Selected)
+	}
+}
+
+func TestResetConfirmExecuted(t *testing.T) {
+	m := model{
+		status:        state.New().WithConfirm(state.ActionReset, "Hard reset to commit?", "Detail..."),
+		activeSection: sectionGraph,
+		sectionCursor: map[graphSection]int{
+			sectionGraph:   0,
+			sectionCurrent: 0,
+			sectionRemote:  0,
+			sectionTags:    0,
+		},
+		repoStatus: git.Status{
+			Root:       "/repo",
+			Branch:     "main",
+			Head:       "c1",
+			HasCommits: true,
+		},
+	}
+	m.status.Selected = "c1"
+	
+	gotModel, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'y'}})
+	got := gotModel.(model)
+	if cmd == nil {
+		t.Fatal("expected async action execution command, got nil")
+	}
+	if got.status.Mode != state.ModeLoading {
+		t.Fatalf("expected loading mode on confirm, got %s", got.status.Mode)
+	}
+	if !strings.Contains(got.status.Message, "Running hard reset...") {
+		t.Fatalf("expected hard reset running message, got %q", got.status.Message)
+	}
+}
+
+func TestResetTriggeredConfirmModalWithDirtyWorktree(t *testing.T) {
+	m := model{
+		status:        state.New().WithBrowse(),
+		activeSection: sectionGraph,
+		sectionCursor: map[graphSection]int{
+			sectionGraph:   0,
+			sectionCurrent: 0,
+			sectionRemote:  0,
+			sectionTags:    0,
+		},
+		repoStatus: git.Status{
+			Root:          "/repo",
+			Branch:        "main",
+			Head:          "c1",
+			HasCommits:    true,
+			WorktreeDirty: true,
+			GraphCommits: []git.GraphCommit{
+				{Hash: "c1", Subject: "Commit 1"},
+			},
+		},
+	}
+	gotModel, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'s'}})
+	got := gotModel.(model)
+	if cmd != nil {
+		t.Fatal("expected no immediate cmd execution for reset, should wait for confirm")
+	}
+	if got.status.Mode != state.ModeConfirm {
+		t.Fatalf("expected confirm mode, got %s", got.status.Mode)
+	}
+	if !strings.Contains(got.status.Detail, "WARNING") || !strings.Contains(got.status.Detail, "OVERWRITE") {
+		t.Fatalf("expected dirty warning description, got %q", got.status.Detail)
+	}
+}
+
+func TestResetExecutedSuccessfullyReturnsToBrowse(t *testing.T) {
+	m := model{
+		status:        state.New().WithLoading("Running hard reset..."),
+		activeSection: sectionGraph,
+		sectionCursor: map[graphSection]int{
+			sectionGraph:   0,
+			sectionCurrent: 0,
+			sectionRemote:  0,
+			sectionTags:    0,
+		},
+		repoStatus: git.Status{
+			Root:       "/repo",
+			Branch:     "main",
+			Head:       "c1",
+			HasCommits: true,
+		},
+	}
+	
+	msg := executedMsg{
+		action: state.ActionReset,
+		target: "c2",
+		status: git.Status{
+			Root:       "/repo",
+			Branch:     "main",
+			Head:       "c2",
+			HasCommits: true,
+			GraphCommits: []git.GraphCommit{
+				{Hash: "c2", Subject: "Commit 2"},
+				{Hash: "c1", Subject: "Commit 1"},
+			},
+		},
+	}
+	
+	gotModel, cmd := m.Update(msg)
+	got := gotModel.(model)
+	if cmd != nil {
+		t.Fatalf("expected no async cmd on reset complete, got %v", cmd)
+	}
+	if got.status.Mode != state.ModeBrowse {
+		t.Fatalf("expected Browse mode, got %s", got.status.Mode)
+	}
+	if !strings.Contains(got.status.Message, "Hard reset completed to c2") {
+		t.Fatalf("expected success message, got %q", got.status.Message)
+	}
+	if got.repoStatus.Head != "c2" {
+		t.Fatalf("expected repoStatus.Head to be updated to c2, got %q", got.repoStatus.Head)
+	}
+}
