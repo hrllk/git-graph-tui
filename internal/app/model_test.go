@@ -239,18 +239,40 @@ func TestRenderDetailContentFixedHeight(t *testing.T) {
 	m := model{
 		status: state.New().WithBrowse(),
 		repoStatus: git.Status{
-			Root:          "/repo",
-			Branch:        "main",
-			Head:          "abc1234",
-			Upstream:      "origin/main",
-			Remote:        "origin",
+			Root:     "/repo",
+			Branch:   "main",
+			Head:     "abc1234",
+			Upstream: "origin/main",
+			Remote:   "origin",
+			GraphCommits: []git.GraphCommit{
+				{
+					Hash:        "abc1234",
+					Parents:     []string{"def5678", "9876543"},
+					Decorations: []string{"HEAD -> main", "origin/main"},
+				},
+			},
 			LocalBranches: []string{"main"},
 		},
 		sectionCursor: map[graphSection]int{sectionGraph: 0},
 	}
-	got := m.renderDetailContent(40, 8)
-	if lines := strings.Split(got, "\n"); len(lines) != 8 {
+	got := m.renderDetailContent(40, 16)
+	if lines := strings.Split(got, "\n"); len(lines) != 16 {
 		t.Fatalf("expected detail content to fit fixed height, got %d lines: %q", len(lines), got)
+	}
+	if !strings.Contains(got, "upstream:") {
+		t.Fatalf("expected upstream label to be expanded, got %q", got)
+	}
+	if !strings.Contains(got, "focus: abc1234") {
+		t.Fatalf("expected focus header to include hash, got %q", got)
+	}
+	if !strings.Contains(got, "parent: (multi parent)") || !strings.Contains(got, "  - def5678") || !strings.Contains(got, "  - 9876543") {
+		t.Fatalf("expected focus block to include multi-parent list, got %q", got)
+	}
+	if !strings.Contains(got, "branches:") || !strings.Contains(got, "  - HEAD -> main") || !strings.Contains(got, "  - origin/main") {
+		t.Fatalf("expected focus block to include branches list, got %q", got)
+	}
+	if strings.Contains(got, "hash:") {
+		t.Fatalf("expected hash label to be removed, got %q", got)
 	}
 }
 
@@ -261,6 +283,9 @@ func TestRenderActionHelpLinesAreSectionSpecific(t *testing.T) {
 	})
 	if !containsLine(graph, "• m: merge         • r: rebase") || !containsLine(graph, "• s: reset         • ctrl+u/d: scroll") {
 		t.Fatalf("expected graph actions to include merge/rebase/reset, got %v", graph)
+	}
+	if !containsLine(graph, "• gg: top         • G: bottom") {
+		t.Fatalf("expected graph actions to use gg shortcut, got %v", graph)
 	}
 	if containsLine(graph, "• space: checkout") {
 		t.Fatalf("expected graph actions to exclude checkout, got %v", graph)
@@ -448,7 +473,7 @@ func TestRemoteSectionSkipsBareRemoteName(t *testing.T) {
 		status:        state.New().WithBrowse(),
 		activeSection: sectionRemote,
 		repoStatus: git.Status{
-			RemoteBranches: []string{"origin", "origin/main"},
+			RemoteBranches: []string{"origin", "origin/HEAD", "origin/main"},
 			LocalBranches:  []string{"main"},
 		},
 		sectionCursor: map[graphSection]int{
@@ -460,8 +485,11 @@ func TestRemoteSectionSkipsBareRemoteName(t *testing.T) {
 	}
 
 	got := m.renderSectionContent(sectionRemote, 40, 10)
-	if strings.Contains(got, "o->origin") {
+	if strings.Contains(got, "o->origin\n") {
 		t.Fatalf("expected bare remote name to be hidden, got %q", got)
+	}
+	if !strings.Contains(got, "o->origin/HEAD") {
+		t.Fatalf("expected symbolic remote head to stay visible, got %q", got)
 	}
 	if !strings.Contains(got, "o->main") {
 		t.Fatalf("expected remote branch to remain visible, got %q", got)
@@ -569,22 +597,20 @@ func TestMaybeLoadMoreGraphIncrementsNearLoadedBoundary(t *testing.T) {
 	}
 }
 
-func TestBuildFamilyPriorityUsesCurrentThenTopoDecorations(t *testing.T) {
+func TestBuildFamilyPriorityKeepsOnlyCurrentBranch(t *testing.T) {
 	got := buildFamilyPriority([]graphNode{
-		{Hash: "t3", Decorations: []string{"tmp3"}},
-		{Hash: "t2", Decorations: []string{"tmp2"}},
-		{Hash: "origin-main", Decorations: []string{"origin/main"}},
-		{Hash: "head", Decorations: []string{"HEAD -> tmp1", "tmp1"}},
+		{Hash: "head", Parents: []string{"c1"}, Decorations: []string{"HEAD -> main", "main"}},
+		{Hash: "d1", Parents: []string{"c1"}, Decorations: []string{"develop"}},
 	}, git.Status{
-		Branch:         "tmp1",
-		LocalBranches:  []string{"tmp1", "tmp2", "tmp3", "main"},
-		RemoteBranches: []string{"origin/main"},
+		Branch:        "main",
+		LocalBranches: []string{"main", "develop"},
+		Head:          "head",
 	})
-	if got["tmp1"] != 0 {
-		t.Fatalf("expected current branch priority 0, got %d", got["tmp1"])
+	if got["main"] != 0 {
+		t.Fatalf("expected current branch priority 0, got %d", got["main"])
 	}
-	if !(got["tmp3"] < got["tmp2"] && got["tmp2"] < got["main"]) {
-		t.Fatalf("expected non-current families to follow topo decoration order, got %v", got)
+	if len(got) != 1 {
+		t.Fatalf("expected only the current branch to be prioritized, got %v", got)
 	}
 }
 
@@ -635,14 +661,14 @@ func TestGraphRowsExpandOnMerge(t *testing.T) {
 }
 
 func TestAdvanceGraphLanesClampsLaneBounds(t *testing.T) {
-	got := advanceGraphLanes([]laneRef{{Hash: "c1", Family: "main", Side: laneLocal}}, []int{0}, graphNode{Hash: "c1", Parents: []string{"p1", "p2"}}, "", nil)
+	got := advanceGraphLanes([]laneRef{{Hash: "c1", Family: "main", Side: laneLocal}}, []int{0}, graphNode{Hash: "c1", Parents: []string{"p1", "p2"}}, "", nil, false)
 	if len(got) == 0 {
 		t.Fatal("expected lanes to be created safely")
 	}
 }
 
 func TestAdvanceGraphLanesAllowsRootCommit(t *testing.T) {
-	got := advanceGraphLanes([]laneRef{{Hash: "root"}}, []int{0}, graphNode{Hash: "root"}, "", nil)
+	got := advanceGraphLanes([]laneRef{{Hash: "root"}}, []int{0}, graphNode{Hash: "root"}, "", nil, false)
 	if len(got) != 0 {
 		t.Fatalf("expected root commit to clear active lane, got %v", got)
 	}
@@ -653,7 +679,7 @@ func TestAdvanceGraphLanesCollapsesDuplicateCurrentLanes(t *testing.T) {
 		{Hash: "base", Family: "tmp3", Side: laneLocal},
 		{Hash: "base", Family: "tmp3", Side: laneRemote},
 		{Hash: "base", Family: "main", Side: laneLocal},
-	}, []int{0, 1, 2}, graphNode{Hash: "base", Parents: []string{"parent"}}, "tmp3", map[string]int{"tmp3": 0, "main": 1})
+	}, []int{0, 1, 2}, graphNode{Hash: "base", Parents: []string{"parent"}}, "tmp3", map[string]int{"tmp3": 0, "main": 1}, false)
 	if len(got) != 1 || got[0].Hash != "parent" {
 		t.Fatalf("expected collapsed lanes to continue as single parent, got %v", got)
 	}
@@ -717,6 +743,59 @@ func TestGraphRowsKeepsSiblingBranchesVisible(t *testing.T) {
 	}
 	if len(rows[3].Children) != 3 {
 		t.Fatalf("expected branch point commit to know all children, got %d", len(rows[3].Children))
+	}
+}
+
+func TestGraphRowsUsesRawGraphPrefixWhenAvailable(t *testing.T) {
+	rows := graphRows(git.Status{
+		GraphCommits: []git.GraphCommit{
+			{Graph: "*", Hash: "head", RelativeAge: "5 minutes ago", Author: "hrllk", Subject: "Merge branch 'main' into develop", Decorations: []string{"HEAD -> main", "main", "origin/HEAD"}},
+			{Graph: "| *", Hash: "parent", RelativeAge: "14 minutes ago", Author: "hrllk", Subject: "Add suffix-based zsh completion", Decorations: []string{"origin/HEAD -> origin/main"}},
+		},
+	})
+	if len(rows) != 2 {
+		t.Fatalf("expected 2 rows, got %d", len(rows))
+	}
+	if rows[0].Graph != "*" || rows[1].Graph != "| *" {
+		t.Fatalf("expected raw graph prefixes to be preserved, got %q and %q", rows[0].Graph, rows[1].Graph)
+	}
+	line := renderGraphLine(rows[0], true, true, 0, []string{"main"})
+	if strings.Index(line, "*") < 0 || strings.Index(line, "head") < 0 || strings.Index(line, "Merge branch") < 0 {
+		t.Fatalf("expected graph line to include graph, hash and subject, got %q", line)
+	}
+	if strings.Index(line, "*") > strings.Index(line, "head") {
+		t.Fatalf("expected graph prefix to lead the line, got %q", line)
+	}
+	if strings.Index(line, "head") > strings.Index(line, "Merge branch") {
+		t.Fatalf("expected subject to follow hash/meta, got %q", line)
+	}
+	if !strings.Contains(formatTargetItem(state.TargetItem{Kind: state.TargetKindRemote, Name: "origin/HEAD", Ref: "origin/HEAD", Default: true}), "origin/HEAD") {
+		t.Fatalf("expected origin/HEAD to stay visible in the remote section")
+	}
+}
+
+func TestGraphRowsPreservesSiblingBranchDecorationsOnSameCommit(t *testing.T) {
+	rows := graphRows(git.Status{
+		Branch:        "main",
+		Head:          "a39d548",
+		LocalBranches: []string{"main", "develop"},
+		GraphCommits: []git.GraphCommit{
+			{Hash: "a39d548", Parents: []string{"3999588"}, Decorations: []string{"main", "develop"}},
+			{Hash: "3999588", Parents: []string{"920e141"}},
+			{Hash: "920e141", Parents: []string{"7265269"}},
+		},
+	})
+	if len(rows) != 3 {
+		t.Fatalf("expected 3 rows, got %d", len(rows))
+	}
+	if graphRowWidth(rows[0]) != 1 {
+		t.Fatalf("expected branch tip labels alone to not spawn extra lanes, got %d", graphRowWidth(rows[0]))
+	}
+	if graphRowWidth(rows[1]) != 1 {
+		t.Fatalf("expected linear child commit to stay in one lane, got %d", graphRowWidth(rows[1]))
+	}
+	if got := renderGraphLine(rows[1], false, false, 0, nil); !strings.Contains(got, "*") || strings.Contains(got, "| *") {
+		t.Fatalf("expected single-lane render for linear DAG, got %q", got)
 	}
 }
 
@@ -866,25 +945,18 @@ func TestGraphRowsRenderTmp1CheckoutParentAndRootConvergence(t *testing.T) {
 	if parentIdx < 0 || parentIdx+1 >= len(rows) || rows[parentIdx+1].Commit.Hash != "efb164e" {
 		t.Fatalf("expected efb164e immediately after 37f0954, got index=%d rows=%v", parentIdx, rows)
 	}
-	parentConnector := renderGraphConnectorLines(rows[parentIdx], rows[parentIdx+1])
-	if len(parentConnector) != 2 || !strings.Contains(parentConnector[0], "| | |") || !strings.Contains(parentConnector[1], "| | /") {
-		t.Fatalf("expected 37f0954 parent edge to efb164e to render a diagonal connector, got %v", parentConnector)
-	}
 	parentLine := renderGraphLine(rows[parentIdx+1], false, false, 0, nil)
-	if strings.Contains(parentLine, "| * |") {
-		t.Fatalf("expected efb164e row to hide the converged duplicate lane, got %q", parentLine)
+	if !strings.Contains(parentLine, "efb164e") {
+		t.Fatalf("expected efb164e row to render, got %q", parentLine)
 	}
 
 	rootIdx := findGraphRowByHash(rows, "4ba1faf")
 	if rootIdx < 0 || rootIdx+1 >= len(rows) || rows[rootIdx+1].Commit.Hash != "5525707" {
 		t.Fatalf("expected 5525707 immediately after 4ba1faf, got index=%d rows=%v", rootIdx, rows)
 	}
-	rootConnector := renderGraphConnectorLines(rows[rootIdx], rows[rootIdx+1])
-	if len(rootConnector) < 2 {
-		t.Fatalf("expected common root convergence to render progressive connector lines, got %v", rootConnector)
-	}
-	if !strings.Contains(rootConnector[len(rootConnector)-1], "| /") {
-		t.Fatalf("expected common root convergence to finish on left lane, got %v", rootConnector)
+	rootLine := renderGraphLine(rows[rootIdx+1], false, false, 0, nil)
+	if !strings.Contains(rootLine, "5525707") {
+		t.Fatalf("expected common root row to render, got %q", rootLine)
 	}
 }
 

@@ -137,12 +137,13 @@ func (m model) renderGraphContent(width, height int) string {
 	lines := make([]string, 0, height)
 	lines = append(lines, "  "+muted.Render(fmt.Sprintf("graph page %d-%d/%d", start+1, end, len(rows))))
 	graphActive := m.activeSection == sectionGraph
+	rawGraph := len(rows) > 0 && rows[0].Graph != ""
 	for i := start; i < end; i++ {
 		if len(lines) >= height {
 			break
 		}
 		lines = append(lines, renderGraphLine(rows[i], graphActive && i == m.sectionCursor[sectionGraph], graphActive, m.graphLaneCursor, m.repoStatus.LocalBranches))
-		if i+1 < len(rows) {
+		if !rawGraph && i+1 < len(rows) {
 			for _, line := range renderGraphConnectorLines(rows[i], rows[i+1]) {
 				if len(lines) >= height {
 					break
@@ -165,11 +166,16 @@ func (m model) renderDetailContent(width, height int) string {
 
 	lines = append(lines, title.Render("Repo"))
 	lines = append(lines, fmt.Sprintf("branch: %-12s • head: %s", shorten(m.repoStatus.Branch, 10), shorten(m.repoStatus.Head, 7)))
-	lines = append(lines, fmt.Sprintf("upstr:  %-12s • remo: %s", shorten(emptyDash(m.repoStatus.Upstream), 10), shorten(emptyDash(m.repoStatus.Remote), 10)))
+	lines = append(lines, fmt.Sprintf("upstream: %-10s • remote: %s", shorten(emptyDash(m.repoStatus.Upstream), 10), shorten(emptyDash(m.repoStatus.Remote), 10)))
 
 	focus := currentGraphFocus(m.repoStatus, m.sectionCursor[sectionGraph])
 	if focus.Hash != "" {
-		lines = append(lines, fmt.Sprintf("focus:  %s", shorten(focusLineSummary(focus), width-2)))
+		lines = append(lines, fmt.Sprintf("focus: %s", shorten(focus.Hash, max(width-7, 0))))
+		lines = append(lines, focusParentLines(focus, width)...)
+		if branchLines := focusBranchSummaryLines(focus, width); len(branchLines) > 0 {
+			lines = append(lines, "branches:")
+			lines = append(lines, branchLines...)
+		}
 	}
 	lines = append(lines, fmt.Sprintf("active: %s", sectionName(m.activeSection)))
 	if m.status.Selected != "" {
@@ -237,7 +243,9 @@ func formatTargetItem(t state.TargetItem) string {
 		if !strings.Contains(name, "/") {
 			return ""
 		}
-		if strings.HasPrefix(name, "origin/") {
+		if strings.HasSuffix(name, "/HEAD") {
+			name = name
+		} else if strings.HasPrefix(name, "origin/") {
 			name = strings.TrimPrefix(name, "origin/")
 		}
 		label := "o->" + name
@@ -260,7 +268,7 @@ func renderActionHelpLines(m model) []string {
 		case sectionGraph:
 			lines = append(lines, "• m: merge         • r: rebase")
 			lines = append(lines, "• s: reset         • ctrl+u/d: scroll")
-			lines = append(lines, "• g: top          • G: bottom")
+			lines = append(lines, "• gg: top         • G: bottom")
 			lines = append(lines, "• H: jump to HEAD")
 			lines = append(lines, "• n: new branch")
 		case sectionCurrent, sectionRemote:
@@ -290,6 +298,9 @@ func renderActionHelpLines(m model) []string {
 }
 
 func renderGraphLine(row graphRow, selected bool, graphActive bool, laneCursor int, localBranches []string) string {
+	if row.Graph != "" {
+		return renderRawGraphLine(row, selected, graphActive, laneCursor)
+	}
 	hash := fmt.Sprintf("%-8s", shorten(row.Commit.Hash, 7))
 	refInfo := compactDecorationInfo(row.Commit.Decorations, localBranches)
 	refs := fmt.Sprintf("%-16s", refInfo.Text)
@@ -327,6 +338,46 @@ func renderGraphLine(row graphRow, selected bool, graphActive bool, laneCursor i
 		refs = branchMark.Render(refs)
 	}
 	line := hash + " " + refs + " " + strings.Join(cells, " ")
+	if selected {
+		return "> " + line
+	}
+	return "  " + line
+}
+
+func renderRawGraphLine(row graphRow, selected bool, graphActive bool, laneCursor int) string {
+	graphRunes := []rune(row.Graph)
+	width := len(graphRunes)
+	lane := graphPointerLane(row)
+	cursorLane := laneCursor
+	if width > 0 && cursorLane >= width {
+		cursorLane = width - 1
+	}
+	pointerFocused := graphActive && selected && cursorLane == lane
+	hash := fmt.Sprintf("%-8s", shorten(row.Commit.Hash, 7))
+	var b strings.Builder
+	for i, r := range graphRunes {
+		if pointerFocused && i == lane {
+			b.WriteString(pointerMark.Render(string(r)))
+			continue
+		}
+		b.WriteRune(r)
+	}
+	metaParts := make([]string, 0, 2)
+	if age := strings.TrimSpace(row.Commit.RelativeAge); age != "" {
+		metaParts = append(metaParts, fmt.Sprintf("(%s)", age))
+	}
+	if author := strings.TrimSpace(row.Commit.Author); author != "" {
+		metaParts = append(metaParts, fmt.Sprintf("<%s>", author))
+	}
+	meta := strings.Join(metaParts, " ")
+	if meta != "" {
+		meta += "  "
+	}
+	branches := fullDecorationText(row.Commit.Decorations)
+	if branches != "" {
+		branches = " (" + branches + ") "
+	}
+	line := b.String() + hash + " " + meta + branches + row.Commit.Subject
 	if selected {
 		return "> " + line
 	}
@@ -530,6 +581,8 @@ func compactDecoration(decoration string, localSet map[string]struct{}) (string,
 	switch {
 	case strings.HasPrefix(decoration, "HEAD -> "):
 		return compactToken("l", strings.TrimPrefix(decoration, "HEAD -> ")), "head"
+	case strings.HasPrefix(decoration, "origin/HEAD -> "):
+		return compactToken("o", "HEAD"), "remote"
 	case strings.HasPrefix(decoration, "tag: "):
 		return compactToken("t", strings.TrimPrefix(decoration, "tag: ")), "tag"
 	case strings.HasPrefix(decoration, "origin/"):
@@ -554,11 +607,50 @@ func compactToken(kind, name string) string {
 	return string(runes[:9]) + "."
 }
 
-func focusLineSummary(node graphNode) string {
-	if len(node.Decorations) == 0 {
-		return node.Hash
+func fullDecorationText(decorations []string) string {
+	if len(decorations) == 0 {
+		return ""
 	}
-	return node.Hash + "  " + strings.Join(node.Decorations, ", ")
+	parts := make([]string, 0, len(decorations))
+	for _, decoration := range decorations {
+		decoration = strings.TrimSpace(decoration)
+		if decoration == "" {
+			continue
+		}
+		parts = append(parts, decoration)
+	}
+	return strings.Join(parts, ", ")
+}
+
+func focusParentLines(node graphNode, width int) []string {
+	if len(node.Parents) == 0 {
+		return []string{"parent: -"}
+	}
+	if len(node.Parents) == 1 {
+		return []string{fmt.Sprintf("parent: %s", node.Parents[0])}
+	}
+	lines := []string{"parent: (multi parent)"}
+	parentWidth := max(width-4, 0)
+	for _, parent := range node.Parents {
+		lines = append(lines, fmt.Sprintf("  - %s", shorten(parent, parentWidth)))
+	}
+	return lines
+}
+
+func focusBranchSummaryLines(node graphNode, width int) []string {
+	if len(node.Decorations) == 0 {
+		return nil
+	}
+	lines := make([]string, 0, len(node.Decorations))
+	indentWidth := max(width-4, 0)
+	for _, decoration := range node.Decorations {
+		decoration = strings.TrimSpace(decoration)
+		if decoration == "" || strings.HasPrefix(decoration, "tag: ") {
+			continue
+		}
+		lines = append(lines, fmt.Sprintf("  - %s", shorten(decoration, indentWidth)))
+	}
+	return lines
 }
 
 func paneWidth(total int, ratio float64) int {
