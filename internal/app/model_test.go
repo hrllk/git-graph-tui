@@ -29,6 +29,22 @@ func TestActionPullRequiresUpstream(t *testing.T) {
 	if got.Block != state.BlockNoUpstream {
 		t.Fatalf("expected no upstream block, got %s", got.Block)
 	}
+	if got.Message != "No upstream configured." {
+		t.Fatalf("expected english no-upstream message, got %q", got.Message)
+	}
+}
+
+func TestDeriveStatusShowsAbortWhenMergeInProgress(t *testing.T) {
+	got := deriveStatus(git.Status{Root: "/repo", Branch: "main", MergeInProgress: true})
+	if got.Mode != state.ModeBrowse {
+		t.Fatalf("expected browse mode, got %s", got.Mode)
+	}
+	if got.Message != "Merge in progress after conflict." {
+		t.Fatalf("expected merge conflict message, got %q", got.Message)
+	}
+	if got.Detail != "Press enter to abort the in-progress merge." {
+		t.Fatalf("expected merge conflict detail, got %q", got.Detail)
+	}
 }
 
 func TestActionPickTargetsBlocksWhenEmpty(t *testing.T) {
@@ -228,7 +244,7 @@ func TestGraphPageSizeMatchesGraphPaneHeight(t *testing.T) {
 	}
 	_, bottomHeight := splitDashboardHeights(totalHeight)
 	graphHeight, _ := splitPaneHeights(bottomHeight)
-	want := graphHeight - 3
+	want := graphHeight - 5
 	if want < 3 {
 		want = 3
 	}
@@ -625,7 +641,7 @@ func TestCheckoutResetsGraphLoadState(t *testing.T) {
 	gotModel, _ := m.Update(executedMsg{action: state.ActionCheckout, target: "tmp1", status: status})
 	got := gotModel.(model)
 	if got.commitLimit != initialGraphCommitLimit {
-		t.Fatalf("expected checkout to reset graph load limit, got %d", got.commitLimit)
+		t.Fatalf("expected checkout to reset graph load limit to unlimited, got %d", got.commitLimit)
 	}
 	if got.graphScroll != 0 || got.sectionCursor[sectionGraph] != 0 {
 		t.Fatalf("expected checkout to reset graph cursor and scroll, got cursor=%d scroll=%d", got.sectionCursor[sectionGraph], got.graphScroll)
@@ -635,7 +651,7 @@ func TestCheckoutResetsGraphLoadState(t *testing.T) {
 	}
 }
 
-func TestMaybeLoadMoreGraphIncrementsNearLoadedBoundary(t *testing.T) {
+func TestMaybeLoadMoreGraphNoOpsWhenUnlimited(t *testing.T) {
 	commits := make([]git.GraphCommit, initialGraphCommitLimit)
 	for i := range commits {
 		hash := fmt.Sprintf("c%02d", i)
@@ -651,11 +667,11 @@ func TestMaybeLoadMoreGraphIncrementsNearLoadedBoundary(t *testing.T) {
 		sectionCursor: map[graphSection]int{sectionGraph: initialGraphCommitLimit - graphLoadThreshold},
 	}
 	got, cmd := maybeLoadMoreGraph(m)
-	if cmd == nil {
-		t.Fatal("expected lazy graph load command")
+	if cmd != nil {
+		t.Fatalf("expected no lazy load command in unlimited mode, got %v", cmd)
 	}
-	if got.commitLimit != initialGraphCommitLimit+graphLoadIncrement {
-		t.Fatalf("expected graph load limit to increment by %d, got %d", graphLoadIncrement, got.commitLimit)
+	if got.commitLimit != initialGraphCommitLimit {
+		t.Fatalf("expected unlimited mode to keep commit limit unchanged, got %d", got.commitLimit)
 	}
 }
 
@@ -713,11 +729,11 @@ func TestGraphRowsExpandOnMerge(t *testing.T) {
 	if graphRowWidth(rows[0]) < 2 {
 		t.Fatalf("expected merge row to expand lanes, got %d", graphRowWidth(rows[0]))
 	}
-	got := renderGraphLine(rows[0], true, true, 1, nil, 24)
+	got := renderGraphLine(rows[0], true, true, 1, nil, 24, false)
 	if !strings.Contains(got, "*") || !strings.Contains(got, "|") {
 		t.Fatalf("unexpected rendered graph row: %q", got)
 	}
-	if len(renderGraphConnectorLines(rows[0], rows[1])) > 1 {
+	if len(renderGraphConnectorLines(rows[0], rows[1], false)) > 1 {
 		t.Fatal("expected merge row connector output to stay compact")
 	}
 }
@@ -819,7 +835,7 @@ func TestGraphRowsUsesRawGraphPrefixWhenAvailable(t *testing.T) {
 	if !strings.HasPrefix(rows[0].Graph, "*") || rows[1].Commit.Hash != "" || !strings.HasPrefix(rows[2].Graph, "| *") {
 		t.Fatalf("expected raw graph prefixes to be preserved, got %q, %q, %q", rows[0].Graph, rows[1].Graph, rows[2].Graph)
 	}
-	line := renderGraphLine(rows[0], true, true, 0, []string{"main"}, 24)
+	line := renderGraphLine(rows[0], true, true, 0, []string{"main"}, 24, false)
 	if strings.Index(line, "head") < 0 || strings.Index(line, "o/l->main") < 0 || strings.Index(line, "*") < 0 || strings.Index(line, "5mins") < 0 || strings.Index(line, "Merge b...") < 0 {
 		t.Fatalf("expected graph line to include hash, branches, when, title and graph, got %q", line)
 	}
@@ -835,11 +851,11 @@ func TestGraphRowsUsesRawGraphPrefixWhenAvailable(t *testing.T) {
 	if strings.Contains(line, "Merge branch") || strings.Contains(line, "origin/") || strings.Contains(line, "develop") {
 		t.Fatalf("expected title and extra branch decorations to be hidden, got %q", line)
 	}
-	connector := renderGraphLine(rows[1], false, true, 0, []string{"main"}, 24)
+	connector := renderGraphLine(rows[1], false, true, 0, []string{"main"}, 24, false)
 	if !strings.Contains(connector, "|\\") {
 		t.Fatalf("expected connector graph line to stay visible, got %q", connector)
 	}
-	focused := renderGraphLine(rows[2], true, true, 0, []string{"main"}, 24)
+	focused := renderGraphLine(rows[2], true, true, 0, []string{"main"}, 24, false)
 	if !strings.Contains(focused, pointerMark.Render("*")) {
 		t.Fatalf("expected branch row graph pointer to be highlighted, got %q", focused)
 	}
@@ -883,7 +899,7 @@ func TestGraphRowsPreservesSiblingBranchDecorationsOnSameCommit(t *testing.T) {
 	if graphRowWidth(rows[1]) != 1 {
 		t.Fatalf("expected linear child commit to stay in one lane, got %d", graphRowWidth(rows[1]))
 	}
-	if got := renderGraphLine(rows[1], false, false, 0, nil, 24); !strings.Contains(got, "*") || strings.Contains(got, "| *") {
+	if got := renderGraphLine(rows[1], false, false, 0, nil, 24, false); !strings.Contains(got, "*") || strings.Contains(got, "| *") {
 		t.Fatalf("expected single-lane render for linear DAG, got %q", got)
 	}
 }
@@ -917,10 +933,10 @@ func TestGraphRowsKeepsLocalAndOriginDivergedFamiliesSeparate(t *testing.T) {
 	if rows[2].Lane != 0 {
 		t.Fatalf("expected checkout branch family lane to stay leftmost, got lane %d", rows[2].Lane)
 	}
-	if got := renderGraphLine(rows[0], false, false, 0, nil, 24); !strings.Contains(got, "| *") {
+	if got := renderGraphLine(rows[0], false, false, 0, nil, 24, false); !strings.Contains(got, "| *") {
 		t.Fatalf("expected top remote row to render as split branch, got %q", got)
 	}
-	if got := renderGraphLine(rows[2], false, false, 0, nil, 24); !strings.Contains(got, "* |") {
+	if got := renderGraphLine(rows[2], false, false, 0, nil, 24, false); !strings.Contains(got, "* |") {
 		t.Fatalf("expected local head row to render as split branch, got %q", got)
 	}
 }
@@ -928,7 +944,7 @@ func TestGraphRowsKeepsLocalAndOriginDivergedFamiliesSeparate(t *testing.T) {
 func TestRenderGraphConnectorLinesSkipsStableTransition(t *testing.T) {
 	current := graphRow{After: []laneRef{{Hash: "a"}, {Hash: "b"}, {Hash: "c"}}}
 	next := graphRow{Before: []laneRef{{Hash: "a"}, {Hash: "b"}, {Hash: "c"}}}
-	got := renderGraphConnectorLines(current, next)
+	got := renderGraphConnectorLines(current, next, false)
 	if len(got) != 0 {
 		t.Fatalf("expected no connector lines for stable transition, got %v", got)
 	}
@@ -942,7 +958,7 @@ func TestRenderGraphConnectorLinesUsesSingleLineForTwoLaneCollapse(t *testing.T)
 		After:  []laneRef{{Hash: "parent", Side: laneLocal}},
 		Lane:   0,
 	}
-	got := renderGraphConnectorLines(current, next)
+	got := renderGraphConnectorLines(current, next, false)
 	if len(got) != 1 {
 		t.Fatalf("expected single connector line for two-lane collapse, got %v", got)
 	}
@@ -963,7 +979,7 @@ func TestRenderGraphConnectorLinesShowsProgressiveMultiLaneCollapse(t *testing.T
 		},
 		After: []laneRef{{Hash: "parent"}},
 	}
-	got := renderGraphConnectorLines(current, next)
+	got := renderGraphConnectorLines(current, next, false)
 	if len(got) != 4 {
 		t.Fatalf("expected multi-lane collapse connector to show progressive convergence, got %v", got)
 	}
@@ -994,7 +1010,7 @@ func TestRenderGraphConnectorLinesShowsParentShiftWithoutFullCollapse(t *testing
 		Lane:         1,
 		DisplayWidth: 3,
 	}
-	got := renderGraphConnectorLines(current, next)
+	got := renderGraphConnectorLines(current, next, false)
 	if len(got) != 2 {
 		t.Fatalf("expected parent shift connector to keep vertical context before diagonal, got %v", got)
 	}
@@ -1034,7 +1050,7 @@ func TestGraphRowsRenderTmp1CheckoutParentAndRootConvergence(t *testing.T) {
 	if parentIdx < 0 || parentIdx+1 >= len(rows) || rows[parentIdx+1].Commit.Hash != "efb164e" {
 		t.Fatalf("expected efb164e immediately after 37f0954, got index=%d rows=%v", parentIdx, rows)
 	}
-	parentLine := renderGraphLine(rows[parentIdx+1], false, false, 0, nil, 24)
+	parentLine := renderGraphLine(rows[parentIdx+1], false, false, 0, nil, 24, false)
 	if !strings.Contains(parentLine, "efb164e") {
 		t.Fatalf("expected efb164e row to render, got %q", parentLine)
 	}
@@ -1043,7 +1059,7 @@ func TestGraphRowsRenderTmp1CheckoutParentAndRootConvergence(t *testing.T) {
 	if rootIdx < 0 || rootIdx+1 >= len(rows) || rows[rootIdx+1].Commit.Hash != "5525707" {
 		t.Fatalf("expected 5525707 immediately after 4ba1faf, got index=%d rows=%v", rootIdx, rows)
 	}
-	rootLine := renderGraphLine(rows[rootIdx+1], false, false, 0, nil, 24)
+	rootLine := renderGraphLine(rows[rootIdx+1], false, false, 0, nil, 24, false)
 	if !strings.Contains(rootLine, "5525707") {
 		t.Fatalf("expected common root row to render, got %q", rootLine)
 	}
@@ -1056,7 +1072,7 @@ func TestRenderGraphLineKeepsCollapsedCommitMarker(t *testing.T) {
 		After:  []laneRef{{Hash: "base"}},
 		Lane:   2,
 	}
-	got := renderGraphLine(row, false, false, 0, nil, 24)
+	got := renderGraphLine(row, false, false, 0, nil, 24, false)
 	if !strings.Contains(got, "*") {
 		t.Fatalf("expected collapsed commit line to keep marker, got %q", got)
 	}

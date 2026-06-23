@@ -11,6 +11,7 @@ const (
 	ModeLoading        Mode = "loading"
 	ModeEmpty          Mode = "empty"
 	ModeError          Mode = "error"
+	ModeConfirm        Mode = "confirm"
 )
 
 type Action string
@@ -18,6 +19,7 @@ type Action string
 const (
 	ActionNone     Action = ""
 	ActionPull     Action = "pull"
+	ActionAbort    Action = "abort"
 	ActionCheckout Action = "checkout"
 	ActionMerge    Action = "merge"
 	ActionRebase   Action = "rebase"
@@ -48,13 +50,14 @@ const (
 )
 
 type TargetItem struct {
-	Kind       TargetKind
-	Name       string
-	Ref        string
-	Current    bool
-	Default    bool
-	NeedsPull  bool
-	NoUpstream bool
+	Kind            TargetKind
+	Name            string
+	Ref             string
+	Current         bool
+	Default         bool
+	NeedsPull       bool
+	NoUpstream      bool
+	MergeConflicted bool
 }
 
 type Status struct {
@@ -162,5 +165,16 @@ func (s Status) WithError(message string) Status {
 	s.Detail = ""
 	s.Selected = ""
 	s.CanExecute = false
+	return s
+}
+
+func (s Status) WithConfirm(action Action, message, detail string) Status {
+	s.Mode = ModeConfirm
+	s.Action = action
+	s.Block = BlockNone
+	s.Title = "Confirm"
+	s.Message = message
+	s.Detail = detail
+	s.CanExecute = true
 	return s
 }

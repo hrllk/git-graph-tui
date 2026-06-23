@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
@@ -39,6 +40,7 @@ type Status struct {
 	NoUpstream      bool
 	NoRemote        bool
 	WorktreeDirty   bool
+	MergeInProgress bool
 	ErrorMessage    string
 	LoadingReason   string
 }
@@ -91,6 +93,23 @@ func (r *Repo) Status(ctx context.Context, limit int) (Status, error) {
 		return Status{ErrorMessage: graphErr.Error()}, graphErr
 	}
 	worktreeDirty, _ := r.worktreeDirty(ctx)
+	mergeInProgress := false
+	// 서브프로세스 기동 비용을 최소화하기 위해 표준적인 .git 디렉토리를 1차 검사합니다.
+	stdMergeHead := filepath.Join(r.root, ".git", "MERGE_HEAD")
+	if _, err := os.Stat(stdMergeHead); err == nil {
+		mergeInProgress = true
+	} else {
+		// submodule 또는 worktree 등 특수한 환경을 위해 git-dir 경로를 2차로 조회하여 검사합니다.
+		if gitDir, err := r.git(ctx, "rev-parse", "--git-dir"); err == nil {
+			gitDirPath := strings.TrimSpace(gitDir)
+			if !filepath.IsAbs(gitDirPath) {
+				gitDirPath = filepath.Join(r.root, gitDirPath)
+			}
+			if _, err := os.Stat(filepath.Join(gitDirPath, "MERGE_HEAD")); err == nil {
+				mergeInProgress = true
+			}
+		}
+	}
 
 	noUpstream := upstream == ""
 	noRemote := remote == ""
@@ -118,6 +137,7 @@ func (r *Repo) Status(ctx context.Context, limit int) (Status, error) {
 		NoUpstream:      noUpstream,
 		NoRemote:        noRemote,
 		WorktreeDirty:   worktreeDirty,
+		MergeInProgress: mergeInProgress,
 	}, nil
 }
 

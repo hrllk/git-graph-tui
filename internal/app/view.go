@@ -18,6 +18,7 @@ var (
 	accent      = lipgloss.NewStyle().Foreground(lipgloss.Color("205")).Bold(true)
 	warn        = lipgloss.NewStyle().Foreground(lipgloss.Color("205")).Bold(true)
 	ok          = lipgloss.NewStyle().Foreground(lipgloss.Color("42")).Bold(true)
+	disabled    = lipgloss.NewStyle().Foreground(lipgloss.Color("245"))
 	headMark    = lipgloss.NewStyle().Foreground(lipgloss.Color("118")).Bold(true)
 	branchMark  = lipgloss.NewStyle().Foreground(lipgloss.Color("226")).Bold(true)
 	pointerMark = lipgloss.NewStyle().Foreground(lipgloss.Color("226")).Bold(true)
@@ -92,6 +93,24 @@ func (m model) View() string {
 
 	centeredBody := lipgloss.Place(m.width, m.height-2, lipgloss.Center, lipgloss.Center, body)
 
+	if m.status.Mode == state.ModeConfirm {
+		titleStyle := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("205"))
+		descStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("252"))
+		helpStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("241"))
+		popupBox := lipgloss.NewStyle().
+			Border(lipgloss.RoundedBorder()).
+			BorderForeground(lipgloss.Color("205")).
+			Padding(1, 2).
+			Width(50).
+			Align(lipgloss.Center)
+		popupContent := popupBox.Render(
+			titleStyle.Render("Do you want to continue?") + "\n\n" +
+			descStyle.Render(m.status.Detail) + "\n\n" +
+			helpStyle.Render("y: yes  •  n: no"),
+		)
+		centeredBody = overlayPopup(centeredBody, popupContent)
+	}
+
 	footer := muted.Render("global: 1 local  •  2 remote  •  3 tags  •  4 graph  •  tab/shift+tab section  •  up/down/j/k move  •  f fetch  •  q quit")
 
 	return centeredBody + "\n" + footer + "\n"
@@ -146,9 +165,12 @@ func (m model) renderGraphContent(width, height int) string {
 		if len(lines) >= height {
 			break
 		}
-		lines = append(lines, renderGraphLine(rows[i], graphActive && i == m.sectionCursor[sectionGraph], graphActive, m.graphLaneCursor, m.repoStatus.LocalBranches, graphColWidth))
+		isHandshake := rows[i].Commit.Hash != "" && m.handshakeCommits[rows[i].Commit.Hash]
+		lineStr := renderGraphLine(rows[i], graphActive && i == m.sectionCursor[sectionGraph], graphActive, m.graphLaneCursor, m.repoStatus.LocalBranches, graphColWidth, isHandshake)
+		lines = append(lines, lineStr)
 		if !rawGraph && i+1 < len(rows) {
-			for _, line := range renderGraphConnectorLines(rows[i], rows[i+1]) {
+			isConnectorHandshake := rows[i].Commit.Hash != "" && m.handshakeCommits[rows[i].Commit.Hash] && rows[i+1].Commit.Hash != "" && m.handshakeCommits[rows[i+1].Commit.Hash]
+			for _, line := range renderGraphConnectorLines(rows[i], rows[i+1], isConnectorHandshake) {
 				if len(lines) >= height {
 					break
 				}
@@ -238,6 +260,9 @@ func formatTargetItem(t state.TargetItem) string {
 			if t.NoUpstream {
 				label += " " + warn.Render("(no-up)")
 			}
+			if t.MergeConflicted {
+				label += " " + warn.Render("(conflict)")
+			}
 			return label
 		}
 		label := "l->" + t.Name
@@ -283,8 +308,26 @@ func renderActionHelpLines(m model) []string {
 			lines = append(lines, "• n: new branch")
 		case sectionCurrent, sectionRemote:
 			lines = append(lines, "• space: checkout")
-			if m.activeSection == sectionCurrent && pullReady(m.repoStatus) {
-				lines = append(lines, "• p: pull")
+			if m.activeSection == sectionCurrent {
+				if pullReady(m.repoStatus) {
+					lines = append(lines, "• p: pull")
+				} else {
+					label := "• p: pull"
+					switch {
+					case m.repoStatus.NoUpstream:
+						label += " (no upstream)"
+					case m.repoStatus.NoRemote:
+						label += " (no remote)"
+					case m.repoStatus.Detached:
+						label += " (detached)"
+					}
+					lines = append(lines, disabled.Render(label))
+				}
+				if m.repoStatus.MergeInProgress {
+					lines = append(lines, "• a: abort merge")
+				} else {
+					lines = append(lines, disabled.Render("• a: abort merge"))
+				}
 			}
 			if m.activeSection == sectionCurrent {
 				lines = append(lines, "• n: new branch")
@@ -307,14 +350,19 @@ func renderActionHelpLines(m model) []string {
 	}
 }
 
-func renderGraphLine(row graphRow, selected bool, graphActive bool, laneCursor int, localBranches []string, graphColWidth int) string {
+func renderGraphLine(row graphRow, selected bool, graphActive bool, laneCursor int, localBranches []string, graphColWidth int, isHandshake bool) string {
 	if row.Graph != "" {
-		return renderRawGraphLine(row, selected, graphActive, laneCursor, localBranches, graphColWidth)
+		return renderRawGraphLine(row, selected, graphActive, laneCursor, localBranches, graphColWidth, isHandshake)
 	}
 	hash := fmt.Sprintf("%-8s", shorten(row.Commit.Hash, 7))
 	refInfo := compactDecorationInfo(row.Commit.Decorations, localBranches)
 	refs := fmt.Sprintf("%-10s", refInfo.Text)
 	graphCell := graphCells(row, graphActive, selected, laneCursor, graphColWidth)
+	graphCell = padRight(graphCell, graphColWidth)
+	if isHandshake {
+		pinkBg := lipgloss.NewStyle().Background(lipgloss.Color("162")).Foreground(lipgloss.Color("255")).Bold(true)
+		graphCell = strings.ReplaceAll(graphCell, "*", pinkBg.Render("*"))
+	}
 	when := fmt.Sprintf("%-7s", compactWhenText(row.Commit.RelativeAge))
 	title := fmt.Sprintf("%-10s", compactTitleText(row.Commit.Subject))
 	isHead := hasHeadDecoration(row.Commit.Decorations)
@@ -327,16 +375,21 @@ func renderGraphLine(row graphRow, selected bool, graphActive bool, laneCursor i
 	if graphActive && selected {
 		hash = pointerMark.Render(hash)
 	}
-	line := hash + " " + refs + " " + padRight(graphCell, graphColWidth) + "  " + when + " " + title
+	line := hash + " " + refs + " " + graphCell + "  " + when + " " + title
 	if selected {
 		return "> " + line
 	}
 	return "  " + line
 }
 
-func renderRawGraphLine(row graphRow, selected bool, graphActive bool, laneCursor int, localBranches []string, graphColWidth int) string {
+func renderRawGraphLine(row graphRow, selected bool, graphActive bool, laneCursor int, localBranches []string, graphColWidth int, isHandshake bool) string {
 	if row.Commit.Hash == "" && row.Commit.Subject == "" && len(row.Commit.Decorations) == 0 && len(row.Commit.Parents) == 0 {
-		line := fmt.Sprintf("%-8s %-10s %-*s  %-7s %-10s", "", "", graphColWidth, row.Graph, "", "")
+		graphCell := padRight(row.Graph, graphColWidth)
+		if isHandshake {
+			pinkBg := lipgloss.NewStyle().Background(lipgloss.Color("162")).Foreground(lipgloss.Color("255")).Bold(true)
+			graphCell = strings.ReplaceAll(graphCell, "*", pinkBg.Render("*"))
+		}
+		line := fmt.Sprintf("%-8s %-10s %s  %-7s %-10s", "", "", graphCell, "", "")
 		if selected {
 			return "> " + line
 		}
@@ -362,9 +415,14 @@ func renderRawGraphLine(row graphRow, selected bool, graphActive bool, laneCurso
 		refs = branchMark.Render(refs)
 	}
 	graphCell := highlightRawGraphPrefix(row.Graph, lane, pointerFocused, refInfo.HasLocalHead)
+	graphCell = padRight(graphCell, graphColWidth)
+	if isHandshake {
+		pinkBg := lipgloss.NewStyle().Background(lipgloss.Color("162")).Foreground(lipgloss.Color("255")).Bold(true)
+		graphCell = strings.ReplaceAll(graphCell, "*", pinkBg.Render("*"))
+	}
 	when := fmt.Sprintf("%-7s", compactWhenText(row.Commit.RelativeAge))
 	title := fmt.Sprintf("%-10s", compactTitleText(row.Commit.Subject))
-	line := hash + " " + refs + " " + padRight(graphCell, graphColWidth) + "  " + when + " " + title
+	line := hash + " " + refs + " " + graphCell + "  " + when + " " + title
 	if selected {
 		return "> " + line
 	}
@@ -460,42 +518,42 @@ func padRight(value string, width int) string {
 	return value + strings.Repeat(" ", width-lipgloss.Width(value))
 }
 
-func renderGraphConnectorLines(current, next graphRow) []string {
+func renderGraphConnectorLines(current, next graphRow, isHandshake bool) []string {
 	if shouldCollapseRowDisplay(next) {
-		return collapseConnectorLines(current)
+		return collapseConnectorLines(current, isHandshake)
 	}
-	if lines := parentShiftConnectorLines(current, next); len(lines) > 0 {
+	if lines := parentShiftConnectorLines(current, next, isHandshake); len(lines) > 0 {
 		return lines
 	}
 	return nil
 }
 
-func collapseConnectorLines(current graphRow) []string {
+func collapseConnectorLines(current graphRow, isHandshake bool) []string {
 	width := len(current.After)
 	if width <= 1 {
 		return nil
 	}
 	if width == 2 {
-		return []string{renderGraphSpacer([]string{"|", "/"})}
+		return []string{renderGraphSpacer([]string{"|", "/"}, isHandshake)}
 	}
 	lines := make([]string, 0, width)
 	full := make([]string, width)
 	for i := range full {
 		full[i] = "|"
 	}
-	lines = append(lines, renderGraphSpacer(full))
+	lines = append(lines, renderGraphSpacer(full, isHandshake))
 	for w := width; w >= 2; w-- {
 		cells := make([]string, w)
 		for i := range cells {
 			cells[i] = "|"
 		}
 		cells[w-1] = "/"
-		lines = append(lines, renderGraphSpacer(cells))
+		lines = append(lines, renderGraphSpacer(cells, isHandshake))
 	}
 	return lines
 }
 
-func parentShiftConnectorLines(current, next graphRow) []string {
+func parentShiftConnectorLines(current, next graphRow, isHandshake bool) []string {
 	width := max(len(current.After), graphRowWidth(next))
 	if width <= 1 {
 		return nil
@@ -526,7 +584,7 @@ func parentShiftConnectorLines(current, next graphRow) []string {
 				full[i] = " "
 			}
 		}
-		return []string{renderGraphSpacer(full), renderGraphSpacer(cells)}
+		return []string{renderGraphSpacer(full, isHandshake), renderGraphSpacer(cells, isHandshake)}
 	}
 	return nil
 }
@@ -544,7 +602,7 @@ func shouldHideConvergedDuplicateLane(row graphRow, idx, displayLane int) bool {
 	return true
 }
 
-func renderGraphSpacer(cells []string) string {
+func renderGraphSpacer(cells []string, isHandshake bool) string {
 	prefix := strings.Repeat(" ", 8) + " " + strings.Repeat(" ", 16) + " "
 	return "  " + prefix + strings.Join(cells, " ")
 }
@@ -841,4 +899,81 @@ func max(a, b int) int {
 		return a
 	}
 	return b
+}
+
+func overlayPopup(base string, popup string) string {
+	baseLines := strings.Split(base, "\n")
+	popupLines := strings.Split(popup, "\n")
+	baseH := len(baseLines)
+	popupH := len(popupLines)
+	if baseH < popupH {
+		return base
+	}
+	popupW := 0
+	for _, l := range popupLines {
+		w := lipgloss.Width(l)
+		if w > popupW {
+			popupW = w
+		}
+	}
+	startY := (baseH - popupH) / 2
+	for i, pl := range popupLines {
+		y := startY + i
+		if y >= len(baseLines) {
+			break
+		}
+		bl := baseLines[y]
+		blW := lipgloss.Width(bl)
+		startX := (blW - popupW) / 2
+		if startX < 0 {
+			startX = 0
+		}
+		baseLines[y] = overlayLine(bl, pl, startX, popupW)
+	}
+	return strings.Join(baseLines, "\n")
+}
+
+func overlayLine(baseLine string, popupLine string, startX, popupW int) string {
+	var left strings.Builder
+	var right strings.Builder
+	inAnsi := false
+	visWidth := 0
+	runes := []rune(baseLine)
+	i := 0
+	n := len(runes)
+	for i < n && visWidth < startX {
+		r := runes[i]
+		if r == '\x1b' {
+			inAnsi = true
+		}
+		left.WriteRune(r)
+		if inAnsi {
+			if r == 'm' {
+				inAnsi = false
+			}
+		} else {
+			visWidth += lipgloss.Width(string(r))
+		}
+		i++
+	}
+	targetVisWidth := visWidth + popupW
+	for i < n && visWidth < targetVisWidth {
+		r := runes[i]
+		if r == '\x1b' {
+			inAnsi = true
+		}
+		if inAnsi {
+			if r == 'm' {
+				inAnsi = false
+			}
+		} else {
+			visWidth += lipgloss.Width(string(r))
+		}
+		i++
+	}
+	for i < n {
+		right.WriteRune(runes[i])
+		i++
+	}
+	return left.String() + popupLine + right.String()
 }

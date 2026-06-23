@@ -15,21 +15,23 @@ import (
 )
 
 type model struct {
-	repo            *git.Repo
-	status          state.Status
-	repoStatus      git.Status
-	activeSection   graphSection
-	sectionCursor   map[graphSection]int
-	graphLaneCursor int
-	graphScroll     int
-	awaitingGoTop   bool
-	branchOpen      bool
-	branchDraft     string
-	branchBase      string
-	width           int
-	height          int
-	commitLimit     int
-	err             error
+	repo               *git.Repo
+	status             state.Status
+	repoStatus         git.Status
+	activeSection      graphSection
+	sectionCursor      map[graphSection]int
+	graphLaneCursor    int
+	graphScroll        int
+	awaitingGoTop      bool
+	branchOpen         bool
+	branchDraft        string
+	branchBase         string
+	width              int
+	height             int
+	commitLimit        int
+	err                error
+	handshakeCommits   map[string]bool
+	pullIsFastForward  bool
 }
 
 type graphSection int
@@ -43,9 +45,9 @@ const (
 )
 
 const (
-	initialGraphCommitLimit = 40
-	graphLoadIncrement      = 40
-	graphLoadThreshold      = 10
+	initialGraphCommitLimit = 0
+	graphLoadIncrement      = 0
+	graphLoadThreshold      = 0
 )
 
 func New(repo *git.Repo) (tea.Model, error) {
@@ -60,8 +62,9 @@ func New(repo *git.Repo) (tea.Model, error) {
 			sectionRemote:  0,
 			sectionTags:    0,
 		},
-		graphLaneCursor: 0,
-		commitLimit:     initialGraphCommitLimit,
+		graphLaneCursor:  0,
+		commitLimit:      initialGraphCommitLimit,
+		handshakeCommits: make(map[string]bool),
 	}
 	return m, nil
 }
@@ -222,11 +225,23 @@ func pullCheck(repo *git.Repo, limit int) tea.Cmd {
 
 func executePull(repo *git.Repo, limit int) tea.Cmd {
 	return func() tea.Msg {
-		if _, err := repo.Run("pull", "--ff-only"); err != nil {
-			return executedMsg{action: state.ActionPull, err: err}
+		_, err := repo.Run("pull", "--no-rebase", "--no-edit")
+		status, statusErr := repo.Status(context.Background(), limit)
+		if statusErr != nil {
+			return executedMsg{action: state.ActionPull, err: statusErr}
 		}
-		status, err := repo.Status(context.Background(), limit)
 		return executedMsg{action: state.ActionPull, status: status, err: err}
+	}
+}
+
+func executeAbort(repo *git.Repo, limit int) tea.Cmd {
+	return func() tea.Msg {
+		_, err := repo.Run("merge", "--abort")
+		status, statusErr := repo.Status(context.Background(), limit)
+		if statusErr != nil {
+			return executedMsg{action: state.ActionAbort, err: statusErr}
+		}
+		return executedMsg{action: state.ActionAbort, status: status, err: err}
 	}
 }
 
@@ -405,8 +420,51 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			"mode":   string(msg.status.Mode),
 		})
 		return m, nil
+	case pullFetchedMsg:
+		if msg.err != nil {
+			m.status = state.New().WithBlocked(state.BlockFetchFailed, "Fetch failed before pull.", msg.err.Error())
+			return m, nil
+		}
+		m.repoStatus = msg.status
+		syncBrowseState(&m, msg.status)
+		track := m.repoStatus.Tracking[m.repoStatus.Branch]
+		isFF := track.Behind > 0 && track.Ahead == 0
+		m.status = state.New().WithLoading("Analyzing pull changes...")
+		return m, loadPullPreviewCommits(m.repo, isFF)
+	case pullPreviewReadyMsg:
+		if msg.err != nil {
+			m.status = state.New().WithBlocked(state.BlockUnknown, "Analysis failed.", msg.err.Error())
+			return m, nil
+		}
+		m.handshakeCommits = make(map[string]bool)
+		for _, hash := range msg.commits {
+			m.handshakeCommits[hash] = true
+		}
+		m.pullIsFastForward = msg.isFF
+		var titleMsg, detailMsg string
+		if msg.isFF {
+			titleMsg = "Do you want to continue?"
+			detailMsg = "The branch will fast-forward to the highlighted target commit."
+		} else {
+			titleMsg = "Do you want to continue?"
+			detailMsg = "The branches have diverged. Merging may cause conflicts."
+		}
+		m.status = m.status.WithConfirm(state.ActionPull, titleMsg, detailMsg)
+		return m, nil
 	case executedMsg:
 		if msg.err != nil {
+			if msg.action == state.ActionPull && msg.status.MergeInProgress {
+				m.repoStatus = msg.status
+				syncBrowseState(&m, msg.status)
+				m.status = state.New().WithBrowse()
+				m.status.Message = "Pull stopped with conflicts."
+				m.status.Detail = "Press enter to abort the in-progress merge."
+				telemetry.Log("app", "execute_conflicted", map[string]string{
+					"action": string(msg.action),
+					"head":   msg.status.Head,
+				})
+				return m, nil
+			}
 			reason := state.BlockUnknown
 			message := "Execution failed."
 			detail := msg.err.Error()
@@ -436,6 +494,24 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			telemetry.Log("app", "execute_action", map[string]string{
 				"action": string(msg.action),
 				"target": msg.target,
+				"head":   msg.status.Head,
+			})
+			return m, nil
+		}
+		if msg.action == state.ActionPull {
+			syncBrowseState(&m, msg.status)
+			m.status = deriveStatus(msg.status)
+			telemetry.Log("app", "execute_action", map[string]string{
+				"action": string(msg.action),
+				"head":   msg.status.Head,
+			})
+			return m, nil
+		}
+		if msg.action == state.ActionAbort {
+			syncBrowseState(&m, msg.status)
+			m.status = deriveStatus(msg.status)
+			telemetry.Log("app", "execute_action", map[string]string{
+				"action": string(msg.action),
 				"head":   msg.status.Head,
 			})
 			return m, nil
@@ -506,6 +582,25 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				}
 			}
 		}
+		if m.status.Mode == state.ModeConfirm {
+			switch msg.String() {
+			case "y", "enter":
+				action := m.status.Action
+				m.status = state.New().WithLoading("Running pull...")
+				m.handshakeCommits = make(map[string]bool)
+				if action == state.ActionPull {
+					return m, executePull(m.repo, m.commitLimit)
+				}
+				m.status = deriveStatus(m.repoStatus)
+				return m, nil
+			case "n", "esc":
+				m.handshakeCommits = make(map[string]bool)
+				m.status = deriveStatus(m.repoStatus)
+				return m, nil
+			default:
+				return m, nil
+			}
+		}
 		if m.awaitingGoTop && msg.String() != "g" {
 			m.awaitingGoTop = false
 		}
@@ -537,7 +632,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "p":
 			if pullReady(m.repoStatus) {
 				m.status = state.New().WithLoading("Fetching upstream before pull...")
-				return m, pullCheck(m.repo, m.commitLimit)
+				return m, executeFetchForPull(m.repo, m.commitLimit)
 			}
 			m.status = actionPull(m.repoStatus)
 		case "m":
@@ -561,11 +656,16 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.status.Selected = focus.Hash
 				return m, nil
 			}
+		case "a":
+			if m.status.Mode == state.ModeBrowse && m.activeSection == sectionCurrent && m.repoStatus.MergeInProgress {
+				m.status = state.New().WithLoading("Aborting merge...")
+				return m, executeAbort(m.repo, m.commitLimit)
+			}
 		case "esc":
 			switch {
-			case m.status.Mode == state.ModeOutcomePreview && m.status.Action != state.ActionPull:
+			case m.status.Mode == state.ModeOutcomePreview && m.status.Action != state.ActionPull && m.status.Action != state.ActionAbort:
 				m.status = actionPickTargets(m.repoStatus, m.status.Action)
-			case m.status.Mode == state.ModeOutcomePreview && m.status.Action == state.ActionPull:
+			case m.status.Mode == state.ModeOutcomePreview && (m.status.Action == state.ActionPull || m.status.Action == state.ActionAbort):
 				m.status = deriveStatus(m.repoStatus)
 			default:
 				m.status = deriveStatus(m.repoStatus)
@@ -677,6 +777,8 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				switch action {
 				case state.ActionPull:
 					return m, executePull(m.repo, m.commitLimit)
+				case state.ActionAbort:
+					return m, executeAbort(m.repo, m.commitLimit)
 				case state.ActionMerge, state.ActionRebase, state.ActionReset:
 					return m, executeAction(m.repo, action, target, m.commitLimit)
 				}
@@ -710,6 +812,11 @@ func deriveStatus(rs git.Status) state.Status {
 	switch {
 	case rs.Root == "":
 		return state.New().WithBlocked(state.BlockNoRepo, "Not inside a Git repository.", "Run this tool from a repo root.")
+	case rs.MergeInProgress:
+		status := state.New().WithBrowse()
+		status.Message = "Merge in progress after conflict."
+		status.Detail = "Press enter to abort the in-progress merge."
+		return status
 	case rs.Detached:
 		return state.New().WithBlocked(state.BlockDetached, "Detached HEAD.", "Pick a branch before running pull, merge, or rebase.")
 	case rs.EmptyRepo:
@@ -728,17 +835,20 @@ func actionPull(rs git.Status) state.Status {
 	if rs.Detached {
 		return state.New().WithBlocked(state.BlockDetached, "Detached HEAD.", "Pull needs a branch with an upstream.")
 	}
+	if rs.MergeInProgress {
+		return state.New().WithBlocked(state.BlockUnknown, "A merge is already in progress.", "Abort or resolve the existing merge before pulling again.")
+	}
 	if rs.NoRemote {
 		return state.New().WithBlocked(state.BlockNoRemote, "No remote configured.", "Pull needs origin or another remote.")
 	}
 	if rs.NoUpstream {
 		return state.New().WithBlocked(state.BlockNoUpstream, "No upstream configured.", "Set an upstream before pulling.")
 	}
-	return state.New().WithOutcome(state.ActionPull, "Fetch first, then check whether the upstream can fast-forward.", "If the branch diverged, show the remote pointer and stop.", false)
+	return state.New().WithOutcome(state.ActionPull, "Pull is ready.", "Pull will fetch and merge upstream changes into the current branch.", true)
 }
 
 func pullReady(rs git.Status) bool {
-	return rs.Root != "" && !rs.Detached && !rs.NoRemote && !rs.NoUpstream
+	return rs.Root != "" && !rs.Detached && !rs.NoRemote && !rs.NoUpstream && !rs.MergeInProgress
 }
 
 func canCreateBranch(rs git.Status) bool {
@@ -1377,15 +1487,16 @@ func sectionTargets(rs git.Status, section graphSection) []state.TargetItem {
 			track := rs.Tracking[rs.Branch]
 			upstream, known := branchUpstream(rs, rs.Branch)
 			items = append(items, state.TargetItem{
-				Kind:       state.TargetKindLocal,
-				Name:       rs.Branch,
-				Ref:        rs.Branch,
-				Current:    true,
-				NeedsPull:  track.Behind > 0 && track.Ahead == 0,
-				NoUpstream: known && upstream == "",
+				Kind:            state.TargetKindLocal,
+				Name:            rs.Branch,
+				Ref:             rs.Branch,
+				Current:         true,
+				NeedsPull:       track.Behind > 0 && track.Ahead == 0,
+				NoUpstream:      known && upstream == "",
+				MergeConflicted: rs.MergeInProgress,
 			})
 		} else if rs.Head != "" {
-			items = append(items, state.TargetItem{Kind: state.TargetKindLocal, Name: "HEAD", Ref: rs.Head, Current: true})
+			items = append(items, state.TargetItem{Kind: state.TargetKindLocal, Name: "HEAD", Ref: rs.Head, Current: true, MergeConflicted: rs.MergeInProgress})
 		}
 		for _, name := range rs.LocalBranches {
 			if name == rs.Branch {
@@ -1516,6 +1627,9 @@ func pageBrowseGraph(m model, pages int) model {
 }
 
 func maybeLoadMoreGraph(m model) (model, tea.Cmd) {
+	if m.commitLimit <= 0 {
+		return m, nil
+	}
 	if m.activeSection != sectionGraph {
 		return m, nil
 	}
@@ -1559,6 +1673,12 @@ func clampScroll(current, total, page int) int {
 	return current
 }
 
+const (
+	// graphViewHeightOffset은 그래프 렌더링 시 레이아웃 테두리(2줄), 페이지 정보 표시(1줄),
+	// 컬럼 헤더(1줄), 기본 패딩 등을 고려하여 제외해야 하는 세로 높이 총합입니다.
+	graphViewHeightOffset = 5
+)
+
 func graphPageSize(m *model) int {
 	totalHeight := int(float64(m.height) * 0.76)
 	if totalHeight < 18 {
@@ -1569,7 +1689,7 @@ func graphPageSize(m *model) int {
 	}
 	_, bottomHeight := splitDashboardHeights(totalHeight)
 	graphHeight, _ := splitPaneHeights(bottomHeight)
-	size := graphHeight - 3
+	size := graphHeight - graphViewHeightOffset
 	if size < 3 {
 		size = 3
 	}
@@ -1854,4 +1974,56 @@ func shorten(v string, n int) string {
 		return v
 	}
 	return v[:n]
+}
+
+type pullFetchedMsg struct {
+	status git.Status
+	err    error
+}
+
+type pullPreviewReadyMsg struct {
+	commits []string
+	isFF    bool
+	err     error
+}
+
+func executeFetchForPull(repo *git.Repo, limit int) tea.Cmd {
+	return func() tea.Msg {
+		err := repo.Fetch(context.Background())
+		status, statusErr := repo.Status(context.Background(), limit)
+		if statusErr != nil {
+			return pullFetchedMsg{err: statusErr}
+		}
+		return pullFetchedMsg{status: status, err: err}
+	}
+}
+
+func loadPullPreviewCommits(repo *git.Repo, isFF bool) tea.Cmd {
+	return func() tea.Msg {
+		var arg string
+		if isFF {
+			arg = "HEAD..@{upstream}"
+		} else {
+			arg = "HEAD...@{upstream}"
+		}
+		out, err := repo.Run("rev-list", arg)
+		if err != nil {
+			return pullPreviewReadyMsg{err: err, isFF: isFF}
+		}
+		lines := strings.Split(out, "\n")
+		commits := make([]string, 0, len(lines))
+		for _, line := range lines {
+			hash := strings.TrimSpace(line)
+			if hash != "" {
+				commits = append(commits, hash)
+			}
+		}
+		if isFF {
+			headOut, headErr := repo.Run("rev-parse", "HEAD")
+			if headErr == nil && strings.TrimSpace(headOut) != "" {
+				commits = append(commits, strings.TrimSpace(headOut))
+			}
+		}
+		return pullPreviewReadyMsg{commits: commits, isFF: isFF}
+	}
 }
