@@ -487,8 +487,14 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 		m.handshakeCommits = make(map[string]bool)
-		for _, hash := range msg.commits {
-			m.handshakeCommits[hash] = true
+		if msg.isFF {
+			if len(msg.commits) > 0 {
+				m.handshakeCommits[msg.commits[0]] = true
+			}
+		} else {
+			for _, hash := range msg.commits {
+				m.handshakeCommits[hash] = true
+			}
 		}
 		m.pullIsFastForward = msg.isFF
 		var titleMsg, detailMsg string
