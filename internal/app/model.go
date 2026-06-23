@@ -1285,6 +1285,9 @@ func sectionTargets(rs git.Status, section graphSection) []state.TargetItem {
 	case sectionRemote:
 		items := make([]state.TargetItem, 0, len(rs.RemoteBranches))
 		for _, name := range rs.RemoteBranches {
+			if !strings.Contains(name, "/") {
+				continue
+			}
 			branchName := name
 			if strings.HasPrefix(branchName, "origin/") {
 				branchName = strings.TrimPrefix(branchName, "origin/")

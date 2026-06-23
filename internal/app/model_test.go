@@ -443,6 +443,31 @@ func TestEnterDoesNotCheckoutInBrowseMode(t *testing.T) {
 	}
 }
 
+func TestRemoteSectionSkipsBareRemoteName(t *testing.T) {
+	m := model{
+		status:        state.New().WithBrowse(),
+		activeSection: sectionRemote,
+		repoStatus: git.Status{
+			RemoteBranches: []string{"origin", "origin/main"},
+			LocalBranches:  []string{"main"},
+		},
+		sectionCursor: map[graphSection]int{
+			sectionGraph:   0,
+			sectionCurrent: 0,
+			sectionRemote:  0,
+			sectionTags:    0,
+		},
+	}
+
+	got := m.renderSectionContent(sectionRemote, 40, 10)
+	if strings.Contains(got, "o->origin") {
+		t.Fatalf("expected bare remote name to be hidden, got %q", got)
+	}
+	if !strings.Contains(got, "o->main") {
+		t.Fatalf("expected remote branch to remain visible, got %q", got)
+	}
+}
+
 func containsLine(lines []string, want string) bool {
 	for _, line := range lines {
 		if line == want {

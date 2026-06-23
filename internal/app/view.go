@@ -112,7 +112,11 @@ func (m model) renderSectionContent(section graphSection, width, height int) str
 		if i == cursor && m.activeSection == section {
 			prefix = "> "
 		}
-		b.WriteString(prefix + formatTargetItem(item) + "\n")
+		label := formatTargetItem(item)
+		if label == "" {
+			continue
+		}
+		b.WriteString(prefix + label + "\n")
 	}
 	return b.String()
 }
@@ -204,7 +208,11 @@ func renderTargets(s state.Status) string {
 		if i == s.TargetIdx {
 			prefix = "> "
 		}
-		b.WriteString(prefix + formatTargetItem(t) + "\n")
+		label := formatTargetItem(t)
+		if label == "" {
+			continue
+		}
+		b.WriteString(prefix + label + "\n")
 	}
 	return b.String()
 }
@@ -226,6 +234,9 @@ func formatTargetItem(t state.TargetItem) string {
 		return label
 	case state.TargetKindRemote:
 		name := t.Name
+		if !strings.Contains(name, "/") {
+			return ""
+		}
 		if strings.HasPrefix(name, "origin/") {
 			name = strings.TrimPrefix(name, "origin/")
 		}
