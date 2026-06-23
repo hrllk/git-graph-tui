@@ -138,6 +138,9 @@ func (m model) renderGraphContent(width, height int) string {
 	lines = append(lines, "  "+muted.Render(fmt.Sprintf("graph page %d-%d/%d", start+1, end, len(rows))))
 	graphActive := m.activeSection == sectionGraph
 	rawGraph := len(rows) > 0 && rows[0].Graph != ""
+	if len(lines) < height {
+		lines = append(lines, "  "+muted.Render(fmt.Sprintf("%-8s %-10s %s", "commit", "branches", "graph")))
+	}
 	for i := start; i < end; i++ {
 		if len(lines) >= height {
 			break
@@ -228,20 +231,20 @@ func formatTargetItem(t state.TargetItem) string {
 	case state.TargetKindLocal:
 		if t.Current {
 			label := ok.Render("l->" + t.Name)
-			if t.NoUpstream {
-				label = warn.Render("(no-up) ") + label
-			}
 			if t.NeedsPull {
 				label += " " + warn.Render("[pull]")
+			}
+			if t.NoUpstream {
+				label += " " + warn.Render("(no-up)")
 			}
 			return label
 		}
 		label := "l->" + t.Name
-		if t.NoUpstream {
-			label = warn.Render("(no-up) ") + label
-		}
 		if t.NeedsPull {
 			label += " " + warn.Render("[pull]")
+		}
+		if t.NoUpstream {
+			label += " " + warn.Render("(no-up)")
 		}
 		return label
 	case state.TargetKindRemote:
@@ -305,11 +308,11 @@ func renderActionHelpLines(m model) []string {
 
 func renderGraphLine(row graphRow, selected bool, graphActive bool, laneCursor int, localBranches []string) string {
 	if row.Graph != "" {
-		return renderRawGraphLine(row, selected, graphActive, laneCursor)
+		return renderRawGraphLine(row, selected, graphActive, laneCursor, localBranches)
 	}
 	hash := fmt.Sprintf("%-8s", shorten(row.Commit.Hash, 7))
 	refInfo := compactDecorationInfo(row.Commit.Decorations, localBranches)
-	refs := fmt.Sprintf("%-16s", refInfo.Text)
+	refs := fmt.Sprintf("%-10s", refInfo.Text)
 	isHead := hasHeadDecoration(row.Commit.Decorations)
 	width := graphRowWidth(row)
 	lane := displayLane(row, width)
@@ -350,9 +353,9 @@ func renderGraphLine(row graphRow, selected bool, graphActive bool, laneCursor i
 	return "  " + line
 }
 
-func renderRawGraphLine(row graphRow, selected bool, graphActive bool, laneCursor int) string {
+func renderRawGraphLine(row graphRow, selected bool, graphActive bool, laneCursor int, localBranches []string) string {
 	if row.Commit.Hash == "" && row.Commit.Subject == "" && len(row.Commit.Decorations) == 0 && len(row.Commit.Parents) == 0 {
-		line := row.Graph
+		line := fmt.Sprintf("%-8s %-10s %s", "", "", row.Graph)
 		if selected {
 			return "> " + line
 		}
@@ -375,22 +378,12 @@ func renderRawGraphLine(row graphRow, selected bool, graphActive bool, laneCurso
 		}
 		b.WriteRune(r)
 	}
-	metaParts := make([]string, 0, 2)
-	if age := strings.TrimSpace(row.Commit.RelativeAge); age != "" {
-		metaParts = append(metaParts, fmt.Sprintf("(%s)", age))
+	refInfo := compactDecorationInfo(row.Commit.Decorations, localBranches)
+	refs := fmt.Sprintf("%-10s", refInfo.Text)
+	if pointerFocused && refInfo.HasBranch {
+		refs = branchMark.Render(refs)
 	}
-	if author := strings.TrimSpace(row.Commit.Author); author != "" {
-		metaParts = append(metaParts, fmt.Sprintf("<%s>", author))
-	}
-	meta := strings.Join(metaParts, " ")
-	if meta != "" {
-		meta += "  "
-	}
-	branches := fullDecorationText(row.Commit.Decorations)
-	if branches != "" {
-		branches = " (" + branches + ") "
-	}
-	line := b.String() + hash + " " + meta + branches + row.Commit.Subject
+	line := hash + " " + refs + " " + b.String()
 	if selected {
 		return "> " + line
 	}
@@ -546,93 +539,98 @@ func compactDecorationInfo(decorations []string, localBranches []string) decorat
 	for _, branch := range localBranches {
 		localSet[branch] = struct{}{}
 	}
-	parts := make([]string, 0, len(decorations))
-	remoteParts := make([]string, 0, len(decorations))
-	localParts := make([]string, 0, len(decorations))
-	tagParts := make([]string, 0, len(decorations))
-	seen := make(map[string]struct{})
+	type branchState struct {
+		local  bool
+		remote bool
+	}
+	branches := make(map[string]*branchState)
+	order := make([]string, 0, len(decorations))
 	hasBranch := false
-	for _, decoration := range decorations {
-		token, kind := compactDecoration(decoration, localSet)
-		if token == "" {
-			continue
-		}
-		if _, ok := seen[token]; ok {
-			continue
-		}
-		seen[token] = struct{}{}
-		switch kind {
-		case "head":
-			hasBranch = true
-			parts = append(parts, token)
-		case "remote":
-			hasBranch = true
-			remoteParts = append(remoteParts, token)
-		case "local":
-			hasBranch = true
-			localParts = append(localParts, token)
-		case "tag":
-			tagParts = append(tagParts, token)
-		}
-	}
-	parts = append(parts, remoteParts...)
-	parts = append(parts, localParts...)
-	parts = append(parts, tagParts...)
-	if len(parts) == 0 {
-		return decorationInfo{Text: "-", HasBranch: false}
-	}
-	joined := strings.Join(parts, ", ")
-	runes := []rune(joined)
-	if len(runes) <= 16 {
-		return decorationInfo{Text: joined, HasBranch: hasBranch}
-	}
-	return decorationInfo{Text: string(runes[:16]), HasBranch: hasBranch}
-}
 
-func compactDecoration(decoration string, localSet map[string]struct{}) (string, string) {
-	decoration = strings.TrimSpace(decoration)
-	switch {
-	case strings.HasPrefix(decoration, "HEAD -> "):
-		return compactToken("l", strings.TrimPrefix(decoration, "HEAD -> ")), "head"
-	case strings.HasPrefix(decoration, "origin/HEAD -> "):
-		return compactToken("o", "HEAD"), "remote"
-	case strings.HasPrefix(decoration, "tag: "):
-		return compactToken("t", strings.TrimPrefix(decoration, "tag: ")), "tag"
-	case strings.HasPrefix(decoration, "origin/"):
-		name := strings.TrimPrefix(decoration, "origin/")
-		if _, ok := localSet[name]; ok {
-			return compactToken("o", name), "remote"
+	addBranch := func(name string) *branchState {
+		name = strings.TrimSpace(name)
+		if name == "" {
+			return nil
 		}
-		return "", ""
-	case decoration != "":
-		return compactToken("l", decoration), "local"
-	default:
-		return "", ""
+		state, ok := branches[name]
+		if !ok {
+			state = &branchState{}
+			branches[name] = state
+			order = append(order, name)
+		}
+		return state
 	}
-}
 
-func compactToken(kind, name string) string {
-	token := kind + "->" + name
-	if len([]rune(token)) <= 10 {
-		return token
-	}
-	runes := []rune(token)
-	return string(runes[:9]) + "."
-}
-
-func fullDecorationText(decorations []string) string {
-	if len(decorations) == 0 {
-		return ""
-	}
-	parts := make([]string, 0, len(decorations))
 	for _, decoration := range decorations {
 		decoration = strings.TrimSpace(decoration)
 		if decoration == "" {
 			continue
 		}
-		parts = append(parts, decoration)
+		switch {
+		case strings.HasPrefix(decoration, "HEAD -> "):
+			if state := addBranch(strings.TrimPrefix(decoration, "HEAD -> ")); state != nil {
+				state.local = true
+				hasBranch = true
+			}
+		case strings.HasPrefix(decoration, "origin/HEAD -> origin/"):
+			if state := addBranch(strings.TrimPrefix(decoration, "origin/HEAD -> origin/")); state != nil {
+				state.remote = true
+				hasBranch = true
+			}
+		case decoration == "origin/HEAD":
+			if state := addBranch("HEAD"); state != nil {
+				state.remote = true
+				hasBranch = true
+			}
+		case strings.HasPrefix(decoration, "origin/"):
+			name := strings.TrimPrefix(decoration, "origin/")
+			if name == "HEAD" {
+				continue
+			}
+			if _, ok := localSet[name]; ok {
+				if state := addBranch(name); state != nil {
+					state.remote = true
+					hasBranch = true
+				}
+			}
+		case strings.HasPrefix(decoration, "tag: "):
+			continue
+		default:
+			if _, ok := localSet[decoration]; ok {
+				if state := addBranch(decoration); state != nil {
+					state.local = true
+					hasBranch = true
+				}
+			} else if !strings.Contains(decoration, "/") {
+				if state := addBranch(decoration); state != nil {
+					state.local = true
+					hasBranch = true
+				}
+			}
+		}
 	}
-	return strings.Join(parts, ", ")
+	name := ""
+	for _, candidate := range order {
+		if state := branches[candidate]; state != nil && (state.local || state.remote) {
+			name = candidate
+			break
+		}
+	}
+	if name == "" {
+		return decorationInfo{Text: "-", HasBranch: false}
+	}
+	state := branches[name]
+	token := "l->" + name
+	if state.remote && state.local {
+		token = "o/l->" + name
+	} else if state.remote {
+		token = "o->" + name
+	}
+	if len([]rune(token)) > 10 {
+		runes := []rune(token)
+		token = string(runes[:9]) + "."
+	}
+	return decorationInfo{Text: token, HasBranch: hasBranch}
 }
 
 func focusParentLines(node graphNode, width int) []string {

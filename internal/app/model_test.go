@@ -703,14 +703,11 @@ func TestCompactLaneRefsOnlyRemovesExactDuplicates(t *testing.T) {
 
 func TestFormatCompactDecorations(t *testing.T) {
 	got := formatCompactDecorations([]string{"HEAD -> main", "develop", "origin/main", "tag: v1.0.0"}, []string{"main", "develop"})
-	if !strings.Contains(got, "o->main") || !strings.Contains(got, "l->main") {
-		t.Fatalf("unexpected compact decorations: %q", got)
+	if got != "o/l->main" {
+		t.Fatalf("expected a single compact branch token, got %q", got)
 	}
-	if strings.Contains(got, "r->") {
-		t.Fatalf("remote token should be omitted: %q", got)
-	}
-	if len([]rune(got)) > 16 {
-		t.Fatalf("expected compact decorations to be clipped to 16 chars: %q", got)
+	if len([]rune(got)) > 10 {
+		t.Fatalf("expected compact decorations to stay within 10 chars, got %q", got)
 	}
 }
 
@@ -765,14 +762,17 @@ func TestGraphRowsUsesRawGraphPrefixWhenAvailable(t *testing.T) {
 		t.Fatalf("expected raw graph prefixes to be preserved, got %q, %q, %q", rows[0].Graph, rows[1].Graph, rows[2].Graph)
 	}
 	line := renderGraphLine(rows[0], true, true, 0, []string{"main"})
-	if strings.Index(line, "*") < 0 || strings.Index(line, "head") < 0 || strings.Index(line, "Merge branch") < 0 {
-		t.Fatalf("expected graph line to include graph, hash and subject, got %q", line)
+	if strings.Index(line, "head") < 0 || strings.Index(line, "o/l->main") < 0 || strings.Index(line, "*") < 0 {
+		t.Fatalf("expected graph line to include hash, branches and graph, got %q", line)
 	}
-	if strings.Index(line, "*") > strings.Index(line, "head") {
-		t.Fatalf("expected graph prefix to lead the line, got %q", line)
+	if strings.Index(line, "head") > strings.Index(line, "o/l->main") {
+		t.Fatalf("expected hash to lead branches, got %q", line)
 	}
-	if !strings.Contains(line, "(HEAD -> main, origin/main, origin/HEAD, develop)") {
-		t.Fatalf("expected branches decoration to remain visible, got %q", line)
+	if strings.Index(line, "o/l->main") > strings.Index(line, "*") {
+		t.Fatalf("expected branches to lead graph, got %q", line)
+	}
+	if strings.Contains(line, "Merge branch") || strings.Contains(line, "origin/") || strings.Contains(line, "develop") {
+		t.Fatalf("expected title and extra branch decorations to be hidden, got %q", line)
 	}
 	connector := renderGraphLine(rows[1], false, true, 0, []string{"main"})
 	if !strings.Contains(connector, "|\\") {
@@ -781,8 +781,8 @@ func TestGraphRowsUsesRawGraphPrefixWhenAvailable(t *testing.T) {
 	if !strings.Contains(formatTargetItem(state.TargetItem{Kind: state.TargetKindRemote, Name: "origin/HEAD", Ref: "origin/HEAD", Default: true}), "origin/HEAD") {
 		t.Fatalf("expected origin/HEAD to stay visible in the remote section")
 	}
-	if got := formatTargetItem(state.TargetItem{Kind: state.TargetKindLocal, Name: "feature", Ref: "feature", NoUpstream: true}); !strings.Contains(got, "(no-up)") {
-		t.Fatalf("expected local targets without upstream to be flagged, got %q", got)
+	if got := formatTargetItem(state.TargetItem{Kind: state.TargetKindLocal, Name: "feature", Ref: "feature", NoUpstream: true}); !strings.Contains(got, "l->feature (no-up)") {
+		t.Fatalf("expected local targets without upstream to be shown after the branch name, got %q", got)
 	}
 }
 

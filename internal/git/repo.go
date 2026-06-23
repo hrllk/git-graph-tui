@@ -152,13 +152,13 @@ func (r *Repo) branchTracking(ctx context.Context, localBranches, remoteBranches
 
 func (r *Repo) branchUpstreams(ctx context.Context) map[string]string {
 	upstreams := make(map[string]string)
-	lines, err := r.gitLines(ctx, "for-each-ref", "--format=%(refname:short)%x09%(upstream:short)", "refs/heads")
+	lines, err := r.gitLines(ctx, "for-each-ref", "--format=%(refname:short)|%(upstream:short)", "refs/heads")
 	if err != nil {
 		telemetry.Log("git", "branch_upstreams_error", map[string]string{"error": err.Error()})
 		return upstreams
 	}
 	for _, line := range lines {
-		parts := strings.SplitN(line, "\t", 2)
+		parts := strings.SplitN(line, "|", 2)
 		if len(parts) == 0 {
 			continue
 		}
