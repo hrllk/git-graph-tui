@@ -228,12 +228,18 @@ func formatTargetItem(t state.TargetItem) string {
 	case state.TargetKindLocal:
 		if t.Current {
 			label := ok.Render("l->" + t.Name)
+			if t.NoUpstream {
+				label = warn.Render("(no-up) ") + label
+			}
 			if t.NeedsPull {
 				label += " " + warn.Render("[pull]")
 			}
 			return label
 		}
 		label := "l->" + t.Name
+		if t.NoUpstream {
+			label = warn.Render("(no-up) ") + label
+		}
 		if t.NeedsPull {
 			label += " " + warn.Render("[pull]")
 		}
@@ -345,6 +351,13 @@ func renderGraphLine(row graphRow, selected bool, graphActive bool, laneCursor i
 }
 
 func renderRawGraphLine(row graphRow, selected bool, graphActive bool, laneCursor int) string {
+	if row.Commit.Hash == "" && row.Commit.Subject == "" && len(row.Commit.Decorations) == 0 && len(row.Commit.Parents) == 0 {
+		line := row.Graph
+		if selected {
+			return "> " + line
+		}
+		return "  " + line
+	}
 	graphRunes := []rune(row.Graph)
 	width := len(graphRunes)
 	lane := graphPointerLane(row)

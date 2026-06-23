@@ -99,11 +99,12 @@ func TestCheckoutTargetFromFocusPrefersBranch(t *testing.T) {
 
 func TestSectionTargetsIncludesCurrentBranch(t *testing.T) {
 	items := sectionTargets(git.Status{
-		Branch:         "main",
-		LocalBranches:  []string{"main", "develop"},
-		Tracking:       map[string]git.BranchTracking{"main": {Behind: 2}, "develop": {Behind: 1, Ahead: 1}},
-		RemoteBranches: []string{"origin/main"},
-		Tags:           []string{"v1.0.0"},
+		Branch:          "main",
+		LocalBranches:   []string{"main", "develop"},
+		BranchUpstreams: map[string]string{"main": "origin/main", "develop": ""},
+		Tracking:        map[string]git.BranchTracking{"main": {Behind: 2}, "develop": {Behind: 1, Ahead: 1}},
+		RemoteBranches:  []string{"origin/main"},
+		Tags:            []string{"v1.0.0"},
 	}, sectionCurrent)
 	if len(items) < 2 {
 		t.Fatalf("expected current section to include current plus locals, got %d", len(items))
@@ -119,6 +120,9 @@ func TestSectionTargetsIncludesCurrentBranch(t *testing.T) {
 	}
 	if items[1].NeedsPull {
 		t.Fatal("expected diverged branch to avoid simple pull flag")
+	}
+	if !items[1].NoUpstream {
+		t.Fatal("expected branch without upstream to show no-up flag")
 	}
 }
 
@@ -749,15 +753,16 @@ func TestGraphRowsKeepsSiblingBranchesVisible(t *testing.T) {
 func TestGraphRowsUsesRawGraphPrefixWhenAvailable(t *testing.T) {
 	rows := graphRows(git.Status{
 		GraphCommits: []git.GraphCommit{
-			{Graph: "*", Hash: "head", RelativeAge: "5 minutes ago", Author: "hrllk", Subject: "Merge branch 'main' into develop", Decorations: []string{"HEAD -> main", "main", "origin/HEAD"}},
-			{Graph: "| *", Hash: "parent", RelativeAge: "14 minutes ago", Author: "hrllk", Subject: "Add suffix-based zsh completion", Decorations: []string{"origin/HEAD -> origin/main"}},
+			{Graph: "*   ", Hash: "head", RelativeAge: "5 minutes ago", Author: "hrllk", Subject: "Merge branch 'main' into develop", Decorations: []string{"HEAD -> main", "origin/main", "origin/HEAD", "develop"}},
+			{Graph: "|\\", Hash: ""},
+			{Graph: "| * ", Hash: "parent", RelativeAge: "14 minutes ago", Author: "hrllk", Subject: "Add suffix-based zsh completion", Decorations: []string{"origin/HEAD -> origin/main"}},
 		},
 	})
-	if len(rows) != 2 {
-		t.Fatalf("expected 2 rows, got %d", len(rows))
+	if len(rows) != 3 {
+		t.Fatalf("expected 3 rows, got %d", len(rows))
 	}
-	if rows[0].Graph != "*" || rows[1].Graph != "| *" {
-		t.Fatalf("expected raw graph prefixes to be preserved, got %q and %q", rows[0].Graph, rows[1].Graph)
+	if !strings.HasPrefix(rows[0].Graph, "*") || rows[1].Commit.Hash != "" || !strings.HasPrefix(rows[2].Graph, "| *") {
+		t.Fatalf("expected raw graph prefixes to be preserved, got %q, %q, %q", rows[0].Graph, rows[1].Graph, rows[2].Graph)
 	}
 	line := renderGraphLine(rows[0], true, true, 0, []string{"main"})
 	if strings.Index(line, "*") < 0 || strings.Index(line, "head") < 0 || strings.Index(line, "Merge branch") < 0 {
@@ -766,11 +771,18 @@ func TestGraphRowsUsesRawGraphPrefixWhenAvailable(t *testing.T) {
 	if strings.Index(line, "*") > strings.Index(line, "head") {
 		t.Fatalf("expected graph prefix to lead the line, got %q", line)
 	}
-	if strings.Index(line, "head") > strings.Index(line, "Merge branch") {
-		t.Fatalf("expected subject to follow hash/meta, got %q", line)
+	if !strings.Contains(line, "(HEAD -> main, origin/main, origin/HEAD, develop)") {
+		t.Fatalf("expected branches decoration to remain visible, got %q", line)
+	}
+	connector := renderGraphLine(rows[1], false, true, 0, []string{"main"})
+	if !strings.Contains(connector, "|\\") {
+		t.Fatalf("expected connector graph line to stay visible, got %q", connector)
 	}
 	if !strings.Contains(formatTargetItem(state.TargetItem{Kind: state.TargetKindRemote, Name: "origin/HEAD", Ref: "origin/HEAD", Default: true}), "origin/HEAD") {
 		t.Fatalf("expected origin/HEAD to stay visible in the remote section")
+	}
+	if got := formatTargetItem(state.TargetItem{Kind: state.TargetKindLocal, Name: "feature", Ref: "feature", NoUpstream: true}); !strings.Contains(got, "(no-up)") {
+		t.Fatalf("expected local targets without upstream to be flagged, got %q", got)
 	}
 }
 

@@ -48,12 +48,13 @@ const (
 )
 
 type TargetItem struct {
-	Kind      TargetKind
-	Name      string
-	Ref       string
-	Current   bool
-	Default   bool
-	NeedsPull bool
+	Kind       TargetKind
+	Name       string
+	Ref        string
+	Current    bool
+	Default    bool
+	NeedsPull  bool
+	NoUpstream bool
 }
 
 type Status struct {

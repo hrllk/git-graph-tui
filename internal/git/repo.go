@@ -18,28 +18,29 @@ type Repo struct {
 }
 
 type Status struct {
-	Root           string
-	Branch         string
-	Head           string
-	DefaultBranch  string
-	Upstream       string
-	Remote         string
-	Detached       bool
-	HasCommits     bool
-	Graph          []string
-	GraphCommits   []GraphCommit
-	Branches       []string
-	LocalBranches  []string
-	Tracking       map[string]BranchTracking
-	RemoteBranches []string
-	Tags           []string
-	Remotes        []string
-	EmptyRepo      bool
-	NoUpstream     bool
-	NoRemote       bool
-	WorktreeDirty  bool
-	ErrorMessage   string
-	LoadingReason  string
+	Root            string
+	Branch          string
+	Head            string
+	DefaultBranch   string
+	Upstream        string
+	Remote          string
+	Detached        bool
+	HasCommits      bool
+	Graph           []string
+	GraphCommits    []GraphCommit
+	Branches        []string
+	LocalBranches   []string
+	BranchUpstreams map[string]string
+	Tracking        map[string]BranchTracking
+	RemoteBranches  []string
+	Tags            []string
+	Remotes         []string
+	EmptyRepo       bool
+	NoUpstream      bool
+	NoRemote        bool
+	WorktreeDirty   bool
+	ErrorMessage    string
+	LoadingReason   string
 }
 
 type Runner struct {
@@ -48,9 +49,13 @@ type Runner struct {
 }
 
 type GraphCommit struct {
+	Graph       string
 	Hash        string
 	Parents     []string
+	RelativeAge string
+	Author      string
 	Decorations []string
+	Subject     string
 }
 
 type BranchTracking struct {
@@ -77,11 +82,11 @@ func (r *Repo) Status(ctx context.Context, limit int) (Status, error) {
 	branches, _ := r.gitLines(ctx, "for-each-ref", "--format=%(refname:short)", "refs/heads")
 	localBranches, _ := r.gitLines(ctx, "for-each-ref", "--format=%(refname:short)", "refs/heads")
 	remoteBranches, _ := r.gitLines(ctx, "for-each-ref", "--format=%(refname:short)", "refs/remotes")
-	filteredRemoteBranches := filterRemoteBranches(remoteBranches)
 	defaultBranch := r.defaultRemoteBranch(ctx)
-	tracking := r.branchTracking(ctx, localBranches, filteredRemoteBranches)
+	branchUpstreams := r.branchUpstreams(ctx)
+	tracking := r.branchTracking(ctx, localBranches, remoteBranches)
 	tags, _ := r.gitLines(ctx, "for-each-ref", "--format=%(refname:short)", "refs/tags")
-	graphCommits, graphErr := r.graphCommits(ctx, localBranches, filteredRemoteBranches, limit)
+	graphCommits, graphErr := r.graphCommits(ctx, localBranches, remoteBranches, limit)
 	if graphErr != nil && !isNoCommits(graphErr) {
 		return Status{ErrorMessage: graphErr.Error()}, graphErr
 	}
@@ -93,25 +98,26 @@ func (r *Repo) Status(ctx context.Context, limit int) (Status, error) {
 	remotes, _ := r.gitLines(ctx, "remote")
 
 	return Status{
-		Root:           r.root,
-		Branch:         branch,
-		Head:           head,
-		DefaultBranch:  defaultBranch,
-		Upstream:       upstream,
-		Remote:         strings.Join(remotes, ", "),
-		Detached:       branch == "HEAD",
-		HasCommits:     !emptyRepo,
-		GraphCommits:   graphCommits,
-		Branches:       branches,
-		LocalBranches:  localBranches,
-		Tracking:       tracking,
-		RemoteBranches: filteredRemoteBranches,
-		Tags:           tags,
-		Remotes:        remotes,
-		EmptyRepo:      emptyRepo,
-		NoUpstream:     noUpstream,
-		NoRemote:       noRemote,
-		WorktreeDirty:  worktreeDirty,
+		Root:            r.root,
+		Branch:          branch,
+		Head:            head,
+		DefaultBranch:   defaultBranch,
+		Upstream:        upstream,
+		Remote:          strings.Join(remotes, ", "),
+		Detached:        branch == "HEAD",
+		HasCommits:      !emptyRepo,
+		GraphCommits:    graphCommits,
+		Branches:        branches,
+		LocalBranches:   localBranches,
+		BranchUpstreams: branchUpstreams,
+		Tracking:        tracking,
+		RemoteBranches:  remoteBranches,
+		Tags:            tags,
+		Remotes:         remotes,
+		EmptyRepo:       emptyRepo,
+		NoUpstream:      noUpstream,
+		NoRemote:        noRemote,
+		WorktreeDirty:   worktreeDirty,
 	}, nil
 }
 
@@ -144,6 +150,31 @@ func (r *Repo) branchTracking(ctx context.Context, localBranches, remoteBranches
 	return tracking
 }
 
+func (r *Repo) branchUpstreams(ctx context.Context) map[string]string {
+	upstreams := make(map[string]string)
+	lines, err := r.gitLines(ctx, "for-each-ref", "--format=%(refname:short)%x09%(upstream:short)", "refs/heads")
+	if err != nil {
+		telemetry.Log("git", "branch_upstreams_error", map[string]string{"error": err.Error()})
+		return upstreams
+	}
+	for _, line := range lines {
+		parts := strings.SplitN(line, "\t", 2)
+		if len(parts) == 0 {
+			continue
+		}
+		branchName := strings.TrimSpace(parts[0])
+		if branchName == "" {
+			continue
+		}
+		upstream := ""
+		if len(parts) > 1 {
+			upstream = strings.TrimSpace(parts[1])
+		}
+		upstreams[branchName] = upstream
+	}
+	return upstreams
+}
+
 func parseTrackingInfo(track string) (ahead, behind int) {
 	track = strings.Trim(track, "[]")
 	parts := strings.Split(track, ", ")
@@ -159,53 +190,51 @@ func parseTrackingInfo(track string) (ahead, behind int) {
 }
 
 func (r *Repo) graphCommits(ctx context.Context, localBranches, remoteBranches []string, limit int) ([]GraphCommit, error) {
-	refs := graphRefs(localBranches, remoteBranches)
-	if len(refs) == 0 {
+	if len(localBranches) == 0 && len(remoteBranches) == 0 {
 		return nil, nil
 	}
-	args := []string{"log", "--format=%H%x1f%P%x1f%D", "--topo-order"}
+	args := []string{"log", "--graph", "--decorate=short", "--topo-order", "--all", "--format=%x00%H%x1f%P%x1f%ar%x1f%an%x1f%D%x1f%s"}
 	if limit > 0 {
 		args = append(args, fmt.Sprintf("--max-count=%d", limit))
 	}
-	args = append(args, refs...)
 	lines, err := r.gitLines(ctx, args...)
 	if err != nil {
 		return nil, err
 	}
 	commits := make([]GraphCommit, 0, len(lines))
 	for _, line := range lines {
-		parts := strings.Split(line, "\x1f")
-		if len(parts) < 3 {
+		nul := strings.IndexRune(line, '\x00')
+		if nul < 0 {
+			graph := strings.TrimRight(line, "\r\n")
+			if strings.TrimSpace(graph) != "" {
+				commits = append(commits, GraphCommit{Graph: graph})
+			}
 			continue
 		}
-		entry := GraphCommit{Hash: strings.TrimSpace(parts[0])}
+		graph := line[:nul]
+		parts := strings.SplitN(line[nul+1:], "\x1f", 6)
+		if len(parts) < 6 {
+			continue
+		}
+		entry := GraphCommit{Graph: graph, Hash: strings.TrimSpace(parts[0])}
 		if parents := strings.TrimSpace(parts[1]); parents != "" {
 			entry.Parents = strings.Fields(parents)
 		}
-		if decorations := strings.TrimSpace(parts[2]); decorations != "" {
+		if relativeAge := strings.TrimSpace(parts[2]); relativeAge != "" {
+			entry.RelativeAge = relativeAge
+		}
+		if author := strings.TrimSpace(parts[3]); author != "" {
+			entry.Author = author
+		}
+		if decorations := strings.TrimSpace(parts[4]); decorations != "" {
 			entry.Decorations = splitDecorations(decorations)
 		}
+		entry.Subject = strings.TrimSpace(parts[5])
 		if entry.Hash != "" {
 			commits = append(commits, entry)
 		}
 	}
 	return commits, nil
-}
-
-func graphRefs(localBranches, remoteBranches []string) []string {
-	remoteSet := make(map[string]struct{}, len(remoteBranches))
-	for _, branch := range remoteBranches {
-		remoteSet[branch] = struct{}{}
-	}
-	refs := make([]string, 0, len(localBranches)*2)
-	for _, branch := range localBranches {
-		refs = append(refs, "refs/heads/"+branch)
-		originBranch := "origin/" + branch
-		if _, ok := remoteSet[originBranch]; ok {
-			refs = append(refs, "refs/remotes/"+originBranch)
-		}
-	}
-	return refs
 }
 
 func filterRemoteBranches(remoteBranches []string) []string {
