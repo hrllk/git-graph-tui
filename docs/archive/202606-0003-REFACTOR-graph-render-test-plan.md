@@ -1,37 +1,39 @@
-# `internal/app` 리팩토링 마스터 계획서
+# `internal/app` 그래프 리팩토링 아카이브 인덱스
 
-## 목적
+## 용도
 
-이 문서는 `view`, `navigation`, `graph_render` 관련 리팩토링의 마스터 인덱스다.
+이 문서는 `view`, `navigation`, `graph_render` 관련 리팩토링 계획을 묶어 둔 아카이브 인덱스다.
 
-문서만 보고도 바로 구현이 가능하도록 하기 위해, 실제 작업은 아래 3개 하위 문서로 분리한다.
+현재 기준의 참조 문서는 아래를 우선으로 본다.
 
-1. `view.go`와 `view_graph.go` 분리
-2. `navigation.go`의 중복 규칙 helper 분리
-3. `graph_render.go` core 정리
+- `docs/structure.md`
+- `docs/roadmap.md`
+- `docs/model-refactor-plan.md`
 
-## 하위 문서
+## 관련 아카이브 문서
 
 - [202606-0004-REFACTOR-view-graph-structure-plan.md](./202606-0004-REFACTOR-view-graph-structure-plan.md)
 - [202606-0005-REFACTOR-navigation-graph-rules-plan.md](./202606-0005-REFACTOR-navigation-graph-rules-plan.md)
 - [202606-0006-REFACTOR-graph-render-core-plan.md](./202606-0006-REFACTOR-graph-render-core-plan.md)
 
-## 적용 순서
+## 현재 해석
 
-1. `view` 구조 분리
-2. `navigation` 규칙 helper 분리
-3. `graph_render` core 정리
-4. 테스트 재배치
-5. `scripts/check` 검증
+이 묶음은 과거에 `internal/app` 안의 그래프 렌더링과 navigation 경계를 정리하려고 작성된 계획이다.
 
-## 완료 기준
+이후 구조가 바뀌면서 일부 전제는 더 이상 유효하지 않다.
 
-- 각 단계 문서만 읽어도 해당 단계 구현이 가능하다.
-- 단계별 책임 경계가 겹치지 않는다.
-- 렌더링 결과와 navigation 판단 결과가 기존과 동일하다.
+- DAG 기반 lazy load 전제는 폐기되었다.
+- 그래프는 `git log` 기반 row 렌더링을 기준으로 본다.
+- `model.go` 축소는 별도 문서로 분리했다.
+
+## 읽는 순서
+
+1. `docs/structure.md`로 현재 파일 배치를 확인한다.
+2. `docs/roadmap.md`로 다음 작업 순서를 확인한다.
+3. `docs/model-refactor-plan.md`로 `model.go` 축소 기준을 확인한다.
+4. 아래 아카이브 문서들은 과거 설계 의도와 경계 정리를 참고할 때만 본다.
 
 ## 비고
 
-- `model.go`는 상태 정의 파일로 유지하는 쪽이 낫다.
-- `view.go` / `view_graph.go` 분리는 가장 우선순위가 높다.
-- 렌더링과 navigation이 같은 문자열 규칙을 중복 구현하지 않도록 한다.
+- 이 문서 묶음은 구현 기준서라기보다 히스토리 기록에 가깝다.
+- 현재 구현 기준은 아카이브가 아니라 `docs/structure.md`와 `docs/roadmap.md`다.

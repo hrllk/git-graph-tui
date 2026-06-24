@@ -265,7 +265,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 		if msg.action == state.ActionCheckout {
-			m.commitLimit = initialGraphCommitLimit
+			m.commitLimit = 0
 			rows := graph.Rows(msg.status)
 			if len(rows) > 0 {
 				m.sectionCursor[sectionGraph] = 0

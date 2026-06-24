@@ -19,7 +19,7 @@ func (m model) handleBrowseKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	switch m.activeSection {
 	case sectionGraph:
 		return m.handleBrowseGraphKey(msg)
-	case sectionCurrent, sectionLocal, sectionRemote, sectionTags:
+	case sectionCurrent, sectionRemote, sectionTags:
 		return m.handleBrowseSectionKey(msg)
 	default:
 		return m, nil
@@ -224,10 +224,10 @@ func (m model) handleBrowseGraphKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 func (m model) handleBrowseSectionKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	switch msg.String() {
 	case "space", " ":
-		if m.activeSection == sectionCurrent || m.activeSection == sectionLocal || m.activeSection == sectionRemote {
+		if m.activeSection == sectionCurrent || m.activeSection == sectionRemote {
 			if target := activeSectionTarget(m); target != "" {
 				m.status = state.New().WithLoading("Checking out " + target + "...")
-				return m, executeCheckout(m.repo, target, initialGraphCommitLimit)
+				return m, executeCheckout(m.repo, target, 0)
 			}
 			m.status = state.New().WithBlocked(state.BlockUnknown, "No checkout target.", "Move the pointer onto a local or remote branch.")
 			return m, nil
@@ -238,13 +238,13 @@ func (m model) handleBrowseSectionKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.status = state.New().WithBlocked(state.BlockUnknown, "Checkout unavailable in this section.", "Use the Local or Remote sections to switch branches.")
 		return m, nil
 	case "a":
-		if (m.activeSection == sectionCurrent || m.activeSection == sectionLocal) && (m.repoStatus.MergeInProgress || m.repoStatus.RebaseInProgress) {
+		if m.activeSection == sectionCurrent && (m.repoStatus.MergeInProgress || m.repoStatus.RebaseInProgress) {
 			m.status = state.New().WithLoading("Aborting merge/rebase...")
 			return m, executeAbort(m.repo, m.commitLimit)
 		}
 		return m, nil
 	case "n":
-		if m.activeSection == sectionCurrent || m.activeSection == sectionLocal {
+		if m.activeSection == sectionCurrent {
 			if !canCreateBranch(m.repoStatus) {
 				m.status = state.New().WithBlocked(state.BlockDirtyTree, "Working tree is not clean.", "Commit or stash local changes before creating and checking out a new branch.")
 				return m, nil

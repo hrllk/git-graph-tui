@@ -181,7 +181,7 @@ func moveBrowseCursor(m model, delta int) model {
 		if cursor >= 0 && cursor < len(rows) {
 			m.graphLaneCursor = graph.PointerLane(rows[cursor])
 		}
-	case sectionCurrent, sectionLocal, sectionRemote, sectionTags:
+	case sectionCurrent, sectionRemote, sectionTags:
 		items := sectionTargets(m.repoStatus, m.activeSection)
 		if len(items) == 0 {
 			m.sectionCursor[m.activeSection] = -1
@@ -231,21 +231,7 @@ func pageBrowseGraph(m model, pages int) model {
 }
 
 func maybeLoadMoreGraph(m model) (model, tea.Cmd) {
-	if m.commitLimit <= 0 {
-		return m, nil
-	}
-	if m.activeSection != sectionGraph {
-		return m, nil
-	}
-	rows := graph.Rows(m.repoStatus)
-	if len(rows) != m.commitLimit {
-		return m, nil
-	}
-	if m.sectionCursor[sectionGraph] < m.commitLimit-graphLoadThreshold {
-		return m, nil
-	}
-	m.commitLimit += graphLoadIncrement
-	return m, refreshRepoState(m.repo, m.commitLimit)
+	return m, nil
 }
 
 func moveGraphScroll(current, total, delta int) int {

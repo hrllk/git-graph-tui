@@ -18,7 +18,6 @@ func testKeyHandlingModel(repo *git.Repo, status git.Status) model {
 		sectionCursor: map[graphSection]int{
 			sectionGraph:   0,
 			sectionCurrent: 0,
-			sectionLocal:   0,
 			sectionRemote:  0,
 			sectionTags:    0,
 		},

@@ -25,6 +25,7 @@ The repo already has these important pieces in place:
    - keep `model.go` for model state and shared types
    - move more code out only when a file becomes too dense
    - do not add new packages just for symmetry
+   - see `docs/model-refactor-plan.md` for the current `model.go` shrink plan
 
 3. Keep `internal/graph` as the home for graph rules.
    - lane order

@@ -45,14 +45,14 @@ func TestMoveSelectableGraphPointerSkipsConnectors(t *testing.T) {
 }
 
 func TestWindowResizeDoesNotIncreaseInitialGraphLoadLimit(t *testing.T) {
-	m := model{commitLimit: initialGraphCommitLimit}
+	m := model{commitLimit: 0}
 	gotModel, cmd := m.Update(tea.WindowSizeMsg{Width: 120, Height: 80})
 	got := gotModel.(model)
 	if cmd != nil {
 		t.Fatal("expected resize to keep graph load lazy")
 	}
-	if got.commitLimit != initialGraphCommitLimit {
-		t.Fatalf("expected initial graph load limit to stay %d, got %d", initialGraphCommitLimit, got.commitLimit)
+	if got.commitLimit != 0 {
+		t.Fatalf("expected initial graph load limit to stay %d, got %d", 0, got.commitLimit)
 	}
 }
 
@@ -202,7 +202,7 @@ func TestRTriggersRebaseOnlyInGraphSection(t *testing.T) {
 	graph := model{
 		status:        state.New().WithBrowse(),
 		activeSection: sectionGraph,
-		commitLimit:   initialGraphCommitLimit,
+		commitLimit:   0,
 	}
 	gotModel, cmd := graph.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'r'}})
 	got := gotModel.(model)
@@ -217,7 +217,7 @@ func TestRTriggersRebaseOnlyInGraphSection(t *testing.T) {
 	current := model{
 		status:        state.New().WithBrowse(),
 		activeSection: sectionCurrent,
-		commitLimit:   initialGraphCommitLimit,
+		commitLimit:   0,
 	}
 	gotModel, cmd = current.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'r'}})
 	got = gotModel.(model)
@@ -233,7 +233,7 @@ func TestFetchKeyDoesNotForceLoadingMode(t *testing.T) {
 	m := model{
 		status:        state.New().WithBrowse(),
 		activeSection: sectionGraph,
-		commitLimit:   initialGraphCommitLimit,
+		commitLimit:   0,
 	}
 	gotModel, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'f'}})
 	got := gotModel.(model)
@@ -252,7 +252,7 @@ func TestFetchKeyWorksFromAnyBrowseSection(t *testing.T) {
 	m := model{
 		status:        state.New().WithBrowse(),
 		activeSection: sectionCurrent,
-		commitLimit:   initialGraphCommitLimit,
+		commitLimit:   0,
 	}
 	gotModel, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'f'}})
 	got := gotModel.(model)
@@ -271,7 +271,7 @@ func TestNumberKeysSwitchSections(t *testing.T) {
 	m := model{
 		status:        state.New().WithBrowse(),
 		activeSection: sectionGraph,
-		commitLimit:   initialGraphCommitLimit,
+		commitLimit:   0,
 	}
 
 	gotModel, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'1'}})
@@ -315,7 +315,7 @@ func TestSpaceDoesNotCheckoutFromGraphSection(t *testing.T) {
 	m := model{
 		status:        state.New().WithBrowse(),
 		activeSection: sectionGraph,
-		commitLimit:   initialGraphCommitLimit,
+		commitLimit:   0,
 		repoStatus: git.Status{
 			Root:          "/repo",
 			Branch:        "main",
@@ -344,7 +344,7 @@ func TestSpaceChecksOutFromRemoteSection(t *testing.T) {
 	m := model{
 		status:        state.New().WithBrowse(),
 		activeSection: sectionRemote,
-		commitLimit:   initialGraphCommitLimit,
+		commitLimit:   0,
 		repoStatus: git.Status{
 			Root:           "/repo",
 			Branch:         "main",
@@ -378,7 +378,7 @@ func TestEnterDoesNotCheckoutInBrowseMode(t *testing.T) {
 	m := model{
 		status:        state.New().WithBrowse(),
 		activeSection: sectionRemote,
-		commitLimit:   initialGraphCommitLimit,
+		commitLimit:   0,
 		repoStatus: git.Status{
 			Root:           "/repo",
 			Branch:         "main",
@@ -445,7 +445,7 @@ func containsLine(lines []string, want string) bool {
 func TestFetchedMsgKeepsPassiveBrowseState(t *testing.T) {
 	m := model{
 		status:      state.New().WithBrowse(),
-		commitLimit: initialGraphCommitLimit,
+		commitLimit: 0,
 		sectionCursor: map[graphSection]int{
 			sectionGraph:   0,
 			sectionCurrent: 0,
@@ -477,7 +477,7 @@ func TestFetchedMsgKeepsPassiveBrowseState(t *testing.T) {
 
 func TestCheckoutResetsGraphLoadState(t *testing.T) {
 	m := model{
-		commitLimit:     initialGraphCommitLimit + graphLoadIncrement,
+		commitLimit:     0,
 		activeSection:   sectionGraph,
 		graphScroll:     12,
 		graphLaneCursor: 3,
@@ -499,7 +499,7 @@ func TestCheckoutResetsGraphLoadState(t *testing.T) {
 	}
 	gotModel, _ := m.Update(executedMsg{action: state.ActionCheckout, target: "tmp1", status: status})
 	got := gotModel.(model)
-	if got.commitLimit != initialGraphCommitLimit {
+	if got.commitLimit != 0 {
 		t.Fatalf("expected checkout to reset graph load limit to unlimited, got %d", got.commitLimit)
 	}
 	if got.graphScroll != 0 || got.sectionCursor[sectionGraph] != 0 {
@@ -511,7 +511,7 @@ func TestCheckoutResetsGraphLoadState(t *testing.T) {
 }
 
 func TestMaybeLoadMoreGraphNoOpsWhenUnlimited(t *testing.T) {
-	commits := make([]git.GraphCommit, initialGraphCommitLimit)
+	commits := make([]git.GraphCommit, 0)
 	for i := range commits {
 		hash := fmt.Sprintf("c%02d", i)
 		commits[i] = git.GraphCommit{Hash: hash}
@@ -521,15 +521,15 @@ func TestMaybeLoadMoreGraphNoOpsWhenUnlimited(t *testing.T) {
 	}
 	m := model{
 		activeSection: sectionGraph,
-		commitLimit:   initialGraphCommitLimit,
+		commitLimit:   0,
 		repoStatus:    git.Status{GraphCommits: commits},
-		sectionCursor: map[graphSection]int{sectionGraph: initialGraphCommitLimit - graphLoadThreshold},
+		sectionCursor: map[graphSection]int{sectionGraph: 0},
 	}
 	got, cmd := maybeLoadMoreGraph(m)
 	if cmd != nil {
 		t.Fatalf("expected no lazy load command in unlimited mode, got %v", cmd)
 	}
-	if got.commitLimit != initialGraphCommitLimit {
+	if got.commitLimit != 0 {
 		t.Fatalf("expected unlimited mode to keep commit limit unchanged, got %d", got.commitLimit)
 	}
 }
