@@ -3,8 +3,8 @@ package app
 import (
 	"strings"
 
-	"hrllk/git-graph-tui/internal/git"
-	"hrllk/git-graph-tui/internal/state"
+	"hrllk/graphkeeper/internal/git"
+	"hrllk/graphkeeper/internal/state"
 )
 
 func deriveStatus(rs git.Status) state.Status {

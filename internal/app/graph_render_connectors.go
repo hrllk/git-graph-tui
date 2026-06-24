@@ -3,7 +3,7 @@ package app
 import (
 	"strings"
 
-	"hrllk/git-graph-tui/internal/graph"
+	"hrllk/graphkeeper/internal/graph"
 )
 
 func renderGraphConnectorLines(current, next graphRow, isHandshake bool) []string {

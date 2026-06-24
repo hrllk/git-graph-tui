@@ -29,7 +29,7 @@ func Log(source, name string, fields map[string]string) {
 		return
 	}
 
-	path := filepath.Join(os.TempDir(), "git-graph-tui-events.jsonl")
+	path := filepath.Join(os.TempDir(), "graphkeeper-events.jsonl")
 
 	mu.Lock()
 	defer mu.Unlock()

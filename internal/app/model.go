@@ -5,29 +5,29 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 
-	"hrllk/git-graph-tui/internal/git"
-	"hrllk/git-graph-tui/internal/graph"
-	"hrllk/git-graph-tui/internal/state"
+	"hrllk/graphkeeper/internal/git"
+	"hrllk/graphkeeper/internal/graph"
+	"hrllk/graphkeeper/internal/state"
 )
 
 type model struct {
-	repo               *git.Repo
-	status             state.Status
-	repoStatus         git.Status
-	activeSection      graphSection
-	sectionCursor      map[graphSection]int
-	graphLaneCursor    int
-	graphScroll        int
-	awaitingGoTop      bool
-	branchOpen         bool
-	branchDraft        string
-	branchBase         string
-	width              int
-	height             int
-	commitLimit        int
-	err                error
-	handshakeCommits   map[string]bool
-	pullIsFastForward  bool
+	repo              *git.Repo
+	status            state.Status
+	repoStatus        git.Status
+	activeSection     graphSection
+	sectionCursor     map[graphSection]int
+	graphLaneCursor   int
+	graphScroll       int
+	awaitingGoTop     bool
+	branchOpen        bool
+	branchDraft       string
+	branchBase        string
+	width             int
+	height            int
+	commitLimit       int
+	err               error
+	handshakeCommits  map[string]bool
+	pullIsFastForward bool
 }
 
 type graphSection int
@@ -179,4 +179,3 @@ type pullPreviewReadyMsg struct {
 	isFF    bool
 	err     error
 }
-

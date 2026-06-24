@@ -6,8 +6,8 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 
-	"hrllk/git-graph-tui/internal/app"
-	"hrllk/git-graph-tui/internal/git"
+	"hrllk/graphkeeper/internal/app"
+	"hrllk/graphkeeper/internal/git"
 )
 
 func main() {

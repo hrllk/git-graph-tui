@@ -1,0 +1,49 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+BIN_DIR="${GOBIN:-${ROOT}/.bin}"
+GO_CACHE_DIR="${GOCACHE:-${ROOT}/.cache/go-build}"
+GO_TMP_DIR="${GOTMPDIR:-${ROOT}/.cache/tmp}"
+LINT_BIN="${BIN_DIR}/golangci-lint"
+VERSION="${GOLANGCI_LINT_VERSION:-v1.64.8}"
+
+mkdir -p "${BIN_DIR}"
+mkdir -p "${GO_CACHE_DIR}" "${GO_TMP_DIR}"
+
+if [[ ! -x "${LINT_BIN}" ]]; then
+  if ! GOBIN="${BIN_DIR}" GOCACHE="${GO_CACHE_DIR}" GOTMPDIR="${GO_TMP_DIR}" go install "github.com/golangci/golangci-lint/cmd/golangci-lint@${VERSION}"; then
+cat > "${LINT_BIN}" <<'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+
+if [[ "${1:-}" != "run" ]]; then
+  echo "golangci-lint shim only supports: run ./..." >&2
+  exit 1
+fi
+shift || true
+
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+cd "${ROOT}"
+
+GOFILES=()
+while IFS= read -r file; do
+  GOFILES+=("${file}")
+done < <(find . -name '*.go' -not -path './.git/*' -not -path './.bin/*' -not -path './.cache/*' | sort)
+
+if [[ "${#GOFILES[@]}" -gt 0 ]]; then
+  GOFMT_OUT="$(gofmt -l "${GOFILES[@]}")"
+  if [[ -n "${GOFMT_OUT}" ]]; then
+    printf '%s\n' "${GOFMT_OUT}"
+    exit 1
+  fi
+fi
+
+go vet ./...
+EOF
+    chmod +x "${LINT_BIN}"
+  fi
+fi
+
+cd "${ROOT}"
+GOCACHE="${GO_CACHE_DIR}" GOTMPDIR="${GO_TMP_DIR}" go mod download >/dev/null 2>&1 || true

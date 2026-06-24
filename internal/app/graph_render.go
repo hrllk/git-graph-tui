@@ -6,7 +6,7 @@ import (
 
 	"github.com/charmbracelet/lipgloss"
 
-	"hrllk/git-graph-tui/internal/graph"
+	"hrllk/graphkeeper/internal/graph"
 )
 
 func renderGraphLine(row graphRow, selected bool, graphActive bool, laneCursor int, localBranches []string, graphColWidth int, isHandshake bool) string {
@@ -227,4 +227,3 @@ func displayLane(row graphRow, width int) int {
 	}
 	return row.Lane
 }
-

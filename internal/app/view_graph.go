@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"strings"
 
-	"hrllk/git-graph-tui/internal/state"
+	"hrllk/graphkeeper/internal/state"
 )
 
 func (m model) renderGraphContent(width, height int) string {
@@ -121,9 +121,7 @@ func formatTargetItem(t state.TargetItem) string {
 		if !strings.Contains(name, "/") {
 			return ""
 		}
-		if strings.HasSuffix(name, "/HEAD") {
-			name = name
-		} else if strings.HasPrefix(name, "origin/") {
+		if !strings.HasSuffix(name, "/HEAD") && strings.HasPrefix(name, "origin/") {
 			name = strings.TrimPrefix(name, "origin/")
 		}
 		label := "o->" + name

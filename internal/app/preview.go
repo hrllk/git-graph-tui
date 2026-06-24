@@ -3,8 +3,8 @@ package app
 import (
 	"fmt"
 
-	"hrllk/git-graph-tui/internal/git"
-	"hrllk/git-graph-tui/internal/state"
+	"hrllk/graphkeeper/internal/git"
+	"hrllk/graphkeeper/internal/state"
 )
 
 func buildActionPreview(action state.Action, target string, rs git.Status, currentOnly, targetOnly int) state.Status {

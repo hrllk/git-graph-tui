@@ -1,4 +1,4 @@
-module hrllk/git-graph-tui
+module hrllk/graphkeeper
 
 go 1.25.6
 

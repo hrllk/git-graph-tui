@@ -3,8 +3,8 @@ package app
 import (
 	"strings"
 
-	"hrllk/git-graph-tui/internal/git"
-	"hrllk/git-graph-tui/internal/graph"
+	"hrllk/graphkeeper/internal/git"
+	"hrllk/graphkeeper/internal/graph"
 )
 
 func isLocalGraphPointer(rs git.Status, cursor int, laneCursor int) bool {

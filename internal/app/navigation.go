@@ -2,9 +2,9 @@ package app
 
 import (
 	tea "github.com/charmbracelet/bubbletea"
-	"hrllk/git-graph-tui/internal/git"
-	"hrllk/git-graph-tui/internal/graph"
-	"hrllk/git-graph-tui/internal/state"
+	"hrllk/graphkeeper/internal/git"
+	"hrllk/graphkeeper/internal/graph"
+	"hrllk/graphkeeper/internal/state"
 )
 
 func graphNodes(rs git.Status) []graphNode {

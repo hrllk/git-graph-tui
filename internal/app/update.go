@@ -6,9 +6,9 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 
-	"hrllk/git-graph-tui/internal/graph"
-	"hrllk/git-graph-tui/internal/state"
-	"hrllk/git-graph-tui/internal/telemetry"
+	"hrllk/graphkeeper/internal/graph"
+	"hrllk/graphkeeper/internal/state"
+	"hrllk/graphkeeper/internal/telemetry"
 )
 
 func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {

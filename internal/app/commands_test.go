@@ -10,8 +10,8 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 
-	"hrllk/git-graph-tui/internal/git"
-	"hrllk/git-graph-tui/internal/state"
+	"hrllk/graphkeeper/internal/git"
+	"hrllk/graphkeeper/internal/state"
 )
 
 type commandRepoFixture struct {
@@ -59,6 +59,11 @@ func configUser(t *testing.T, dir string) {
 	runGit(t, dir, "config", "user.email", "test@example.com")
 }
 
+func checkoutMainTrackingOrigin(t *testing.T, dir string) {
+	t.Helper()
+	runGit(t, dir, "checkout", "-B", "main", "origin/main")
+}
+
 func newCommandRepo(t *testing.T) commandRepoFixture {
 	t.Helper()
 	base := t.TempDir()
@@ -87,6 +92,7 @@ func cloneRepoAtHash(t *testing.T, remote, hash string) commandRepoFixture {
 	base := t.TempDir()
 	clone := filepath.Join(base, "clone")
 	runGit(t, base, "clone", remote, "clone")
+	checkoutMainTrackingOrigin(t, clone)
 	configUser(t, clone)
 	runGit(t, clone, "reset", "--hard", hash)
 	repo, err := git.Open(clone)
@@ -101,6 +107,7 @@ func advanceRemote(t *testing.T, remote, fileName, content, commitMessage string
 	base := t.TempDir()
 	clone := filepath.Join(base, "clone")
 	runGit(t, base, "clone", remote, "clone")
+	checkoutMainTrackingOrigin(t, clone)
 	configUser(t, clone)
 	writeRepoFile(t, clone, fileName, content)
 	runGit(t, clone, "add", fileName)

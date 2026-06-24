@@ -1,0 +1,11 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+GO_CACHE_DIR="${GOCACHE:-${ROOT}/.cache/go-build}"
+GO_TMP_DIR="${GOTMPDIR:-${ROOT}/.cache/tmp}"
+
+mkdir -p "${GO_CACHE_DIR}" "${GO_TMP_DIR}"
+
+cd "${ROOT}"
+GOCACHE="${GO_CACHE_DIR}" GOTMPDIR="${GO_TMP_DIR}" go test ./...

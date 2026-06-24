@@ -10,7 +10,7 @@ import (
 	"strings"
 	"time"
 
-	"hrllk/git-graph-tui/internal/telemetry"
+	"hrllk/graphkeeper/internal/telemetry"
 )
 
 type Repo struct {

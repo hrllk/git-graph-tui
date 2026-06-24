@@ -4,7 +4,7 @@ import (
 	"sort"
 	"strings"
 
-	"hrllk/git-graph-tui/internal/git"
+	"hrllk/graphkeeper/internal/git"
 )
 
 type Node struct {

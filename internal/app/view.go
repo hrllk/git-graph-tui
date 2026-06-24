@@ -5,7 +5,7 @@ import (
 
 	"github.com/charmbracelet/lipgloss"
 
-	"hrllk/git-graph-tui/internal/state"
+	"hrllk/graphkeeper/internal/state"
 )
 
 var (

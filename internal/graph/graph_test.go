@@ -3,7 +3,7 @@ package graph
 import (
 	"testing"
 
-	"hrllk/git-graph-tui/internal/git"
+	"hrllk/graphkeeper/internal/git"
 )
 
 func TestRowsUsesRawGraphPrefixWhenAvailable(t *testing.T) {
@@ -86,7 +86,7 @@ func TestRowsInsertsVirtualConflictNodeDuringMerge(t *testing.T) {
 		MergeInProgress: true,
 		Head:            "abc123",
 		ConflictTarget:  "def456",
-		GraphCommits: []git.GraphCommit{{Hash: "abc123", Graph: "*", Subject: "tip"}},
+		GraphCommits:    []git.GraphCommit{{Hash: "abc123", Graph: "*", Subject: "tip"}},
 	})
 	if len(rows) != 2 {
 		t.Fatalf("expected virtual conflict row plus original row, got %d", len(rows))
@@ -107,4 +107,3 @@ func TestPageSizeClampsToMinimum(t *testing.T) {
 		t.Fatalf("expected tiny layout to clamp to 3, got %d", got)
 	}
 }
-
