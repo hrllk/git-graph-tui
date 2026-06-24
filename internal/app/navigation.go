@@ -2,6 +2,7 @@ package app
 
 import (
 	"strings"
+
 	tea "github.com/charmbracelet/bubbletea"
 	"hrllk/git-graph-tui/internal/git"
 	"hrllk/git-graph-tui/internal/graph"
@@ -148,77 +149,14 @@ func switchBrowseSection(m model, section graphSection) model {
 func sectionTargets(rs git.Status, section graphSection) []state.TargetItem {
 	switch section {
 	case sectionCurrent:
-		items := make([]state.TargetItem, 0, 1+len(rs.LocalBranches))
-		if rs.Branch != "" {
-			track := rs.Tracking[rs.Branch]
-			upstream, known := branchUpstream(rs, rs.Branch)
-			items = append(items, state.TargetItem{
-				Kind:            state.TargetKindLocal,
-				Name:            rs.Branch,
-				Ref:             rs.Branch,
-				Current:         true,
-				NeedsPull:       track.Behind > 0 && track.Ahead == 0,
-				NeedsPush:       track.Ahead > 0,
-				NoUpstream:      known && upstream == "",
-				MergeConflicted: rs.MergeInProgress,
-			})
-		} else if rs.Head != "" {
-			items = append(items, state.TargetItem{Kind: state.TargetKindLocal, Name: "HEAD", Ref: rs.Head, Current: true, MergeConflicted: rs.MergeInProgress})
-		}
-		for _, name := range rs.LocalBranches {
-			if name == rs.Branch {
-				continue
-			}
-			track := rs.Tracking[name]
-			upstream, known := branchUpstream(rs, name)
-			items = append(items, state.TargetItem{
-				Kind:       state.TargetKindLocal,
-				Name:       name,
-				Ref:        name,
-				NeedsPull:  track.Behind > 0 && track.Ahead == 0,
-				NeedsPush:  track.Ahead > 0,
-				NoUpstream: known && upstream == "",
-			})
-		}
-		return items
+		return buildCurrentSectionTargets(rs)
 	case sectionRemote:
-		items := make([]state.TargetItem, 0, len(rs.RemoteBranches))
-		for _, name := range rs.RemoteBranches {
-			if !strings.Contains(name, "/") {
-				continue
-			}
-			items = append(items, state.TargetItem{
-				Kind:    state.TargetKindRemote,
-				Name:    name,
-				Ref:     name,
-				Default: strings.HasSuffix(name, "/HEAD") || name == "origin/"+rs.DefaultBranch,
-			})
-		}
-		return items
+		return buildRemoteSectionTargets(rs)
 	case sectionTags:
-		items := make([]state.TargetItem, 0, len(rs.Tags))
-		for _, name := range rs.Tags {
-			items = append(items, state.TargetItem{Kind: state.TargetKindTag, Name: name, Ref: name})
-		}
-		return items
+		return buildTagSectionTargets(rs)
 	default:
 		return nil
 	}
-}
-
-func branchUpstream(rs git.Status, name string) (string, bool) {
-	if name == "" {
-		return "", false
-	}
-	if rs.BranchUpstreams != nil {
-		if upstream, ok := rs.BranchUpstreams[name]; ok {
-			return upstream, true
-		}
-	}
-	if name == rs.Branch && rs.Branch != "HEAD" {
-		return rs.Upstream, true
-	}
-	return "", false
 }
 
 func activeSectionTarget(m model) string {

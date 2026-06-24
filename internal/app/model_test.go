@@ -12,152 +12,6 @@ import (
 	"hrllk/git-graph-tui/internal/state"
 )
 
-func TestDeriveStatusBlockedWhenDetached(t *testing.T) {
-	got := deriveStatus(git.Status{Root: "/repo", Branch: "HEAD", Detached: true})
-	if got.Mode != state.ModeBlocked {
-		t.Fatalf("expected blocked mode, got %s", got.Mode)
-	}
-	if got.Block != state.BlockDetached {
-		t.Fatalf("expected detached block, got %s", got.Block)
-	}
-}
-
-func TestActionPullRequiresUpstream(t *testing.T) {
-	got := actionPull(git.Status{Root: "/repo", Branch: "main", NoRemote: false, NoUpstream: true})
-	if got.Mode != state.ModeBlocked {
-		t.Fatalf("expected blocked mode, got %s", got.Mode)
-	}
-	if got.Block != state.BlockNoUpstream {
-		t.Fatalf("expected no upstream block, got %s", got.Block)
-	}
-	if got.Message != "No upstream configured." {
-		t.Fatalf("expected english no-upstream message, got %q", got.Message)
-	}
-}
-
-func TestDeriveStatusShowsAbortWhenMergeInProgress(t *testing.T) {
-	got := deriveStatus(git.Status{Root: "/repo", Branch: "main", MergeInProgress: true})
-	if got.Mode != state.ModeBrowse {
-		t.Fatalf("expected browse mode, got %s", got.Mode)
-	}
-	if got.Message != "Merge/Rebase in progress after conflict." {
-		t.Fatalf("expected merge conflict message, got %q", got.Message)
-	}
-	if got.Detail != "Press enter to abort the in-progress merge/rebase." {
-		t.Fatalf("expected merge conflict detail, got %q", got.Detail)
-	}
-}
-
-func TestDeriveStatusShowsAbortWhenRebaseInProgress(t *testing.T) {
-	got := deriveStatus(git.Status{Root: "/repo", Branch: "main", RebaseInProgress: true})
-	if got.Mode != state.ModeBrowse {
-		t.Fatalf("expected browse mode, got %s", got.Mode)
-	}
-	if got.Message != "Merge/Rebase in progress after conflict." {
-		t.Fatalf("expected rebase conflict message, got %q", got.Message)
-	}
-	if got.Detail != "Press enter to abort the in-progress merge/rebase." {
-		t.Fatalf("expected rebase conflict detail, got %q", got.Detail)
-	}
-}
-
-
-
-func TestActionPickTargetsBlocksWhenEmpty(t *testing.T) {
-	got := actionPickTargets(git.Status{Root: "/repo", Branch: "main"}, state.ActionMerge)
-	if got.Mode != state.ModeBlocked {
-		t.Fatalf("expected blocked mode, got %s", got.Mode)
-	}
-	if got.Block != state.BlockTargetEmpty {
-		t.Fatalf("expected empty target block, got %s", got.Block)
-	}
-}
-
-func TestActionPickTargetsUsesRefs(t *testing.T) {
-	got := actionPickTargets(git.Status{
-		Root:           "/repo",
-		Branch:         "main",
-		LocalBranches:  []string{"main"},
-		RemoteBranches: []string{"origin/main"},
-	}, state.ActionMerge)
-	if got.Mode != state.ModeTargetPick {
-		t.Fatalf("expected target pick, got %s", got.Mode)
-	}
-	if got.Selected != "main" {
-		t.Fatalf("expected first ref selected, got %q", got.Selected)
-	}
-}
-
-func TestBuildActionPreviewMergeFastForward(t *testing.T) {
-	got := buildActionPreview(state.ActionMerge, "feature", git.Status{Root: "/repo", Branch: "main", Head: "abc123"}, 0, 3)
-	if got.Mode != state.ModeOutcomePreview {
-		t.Fatalf("expected outcome preview, got %s", got.Mode)
-	}
-	if !got.CanExecute {
-		t.Fatalf("expected preview to be executable")
-	}
-	if got.Action != state.ActionMerge {
-		t.Fatalf("expected merge action, got %s", got.Action)
-	}
-}
-
-func TestSelectedTargetFallsBackToIndex(t *testing.T) {
-	start := state.Status{
-		Mode:      state.ModeTargetPick,
-		Targets:   []state.TargetItem{{Name: "main", Ref: "main"}, {Name: "feature", Ref: "feature"}},
-		TargetIdx: 1,
-	}
-	if got := selectedTarget(start); got != "feature" {
-		t.Fatalf("expected selected target to fall back to index, got %q", got)
-	}
-}
-
-func TestParseGraphLineExtractsHashAndDecorations(t *testing.T) {
-	node := graphNode{Hash: "1a2b3c4", Parents: []string{"0a0a0a0"}}
-	if node.Hash != "1a2b3c4" {
-		t.Fatalf("expected hash, got %q", node.Hash)
-	}
-	if len(node.Parents) != 1 {
-		t.Fatalf("expected parent, got %d", len(node.Parents))
-	}
-}
-
-func TestCheckoutTargetFromFocusPrefersBranch(t *testing.T) {
-	node := graphNode{Decorations: []string{"HEAD -> main", "origin/main"}}
-	if got := checkoutTargetFromFocus(node); got != "main" {
-		t.Fatalf("expected main checkout target, got %q", got)
-	}
-}
-
-func TestSectionTargetsIncludesCurrentBranch(t *testing.T) {
-	items := sectionTargets(git.Status{
-		Branch:          "main",
-		LocalBranches:   []string{"main", "develop"},
-		BranchUpstreams: map[string]string{"main": "origin/main", "develop": ""},
-		Tracking:        map[string]git.BranchTracking{"main": {Behind: 2}, "develop": {Behind: 1, Ahead: 1}},
-		RemoteBranches:  []string{"origin/main"},
-		Tags:            []string{"v1.0.0"},
-	}, sectionCurrent)
-	if len(items) < 2 {
-		t.Fatalf("expected current section to include current plus locals, got %d", len(items))
-	}
-	if items[0].Ref != "main" {
-		t.Fatalf("expected current branch ref, got %q", items[0].Ref)
-	}
-	if !items[0].Current {
-		t.Fatal("expected current branch to be flagged")
-	}
-	if !items[0].NeedsPull {
-		t.Fatal("expected current branch to show pull flag when origin is ahead")
-	}
-	if items[1].NeedsPull {
-		t.Fatal("expected diverged branch to avoid simple pull flag")
-	}
-	if !items[1].NoUpstream {
-		t.Fatal("expected branch without upstream to show no-up flag")
-	}
-}
-
 func TestGraphSectionCycle(t *testing.T) {
 	if got := nextGraphSection(sectionTags); got != sectionGraph {
 		t.Fatalf("expected cycle to graph, got %v", got)
@@ -189,8 +43,6 @@ func TestMoveSelectableGraphPointerSkipsConnectors(t *testing.T) {
 		t.Fatalf("expected connector row to be skipped on move up, got %d", got)
 	}
 }
-
-
 
 func TestWindowResizeDoesNotIncreaseInitialGraphLoadLimit(t *testing.T) {
 	m := model{commitLimit: initialGraphCommitLimit}
@@ -682,10 +534,6 @@ func TestMaybeLoadMoreGraphNoOpsWhenUnlimited(t *testing.T) {
 	}
 }
 
-
-
-
-
 func TestGraphRowsExpandOnMerge(t *testing.T) {
 	rows := graph.Rows(git.Status{
 		GraphCommits: []git.GraphCommit{
@@ -708,14 +556,6 @@ func TestGraphRowsExpandOnMerge(t *testing.T) {
 		t.Fatal("expected merge row connector output to stay compact")
 	}
 }
-
-
-
-
-
-
-
-
 
 func TestFormatCompactDecorations(t *testing.T) {
 	got := formatCompactDecorations([]string{"HEAD -> main", "develop", "origin/main", "tag: v1.0.0"}, []string{"main", "develop"})

@@ -21,8 +21,15 @@ internal/
     commands.go
     navigation.go
     actions.go
+    target_items.go
+    preview.go
+    execution_detail.go
     view.go
     graph_render.go
+    actions_test.go
+    target_items_test.go
+    preview_test.go
+    execution_detail_test.go
     model_test.go
   graph/
     graph.go
@@ -48,6 +55,9 @@ internal/
 - owns the Bubble Tea model and update flow
 - keeps command creation and user actions in small files
 - keeps navigation, graph focus, and graph rendering close to the app layer
+- `target_items.go` holds shared target selection policy for browse and action flows
+- `preview.go` holds merge, rebase, and reset preview helpers
+- `execution_detail.go` holds completion messaging and remote commit lookup helpers
 - `graph_render.go` holds the render helpers that still depend on app state
 
 #### `internal/graph`
@@ -67,4 +77,5 @@ internal/
 ### Notes
 - `internal/ui` does not exist yet.
 - The current split keeps render helpers in `internal/app` because they still depend on app state.
+- Target selection policy is shared between browse and action flows to avoid drift.
 - Tests live next to the code they protect, usually as `_test.go` files in the same package. This document should stay close to the actual tree, not the aspirational one.
