@@ -21,6 +21,12 @@ func TestGraphSectionCycle(t *testing.T) {
 	}
 }
 
+func TestSectionNameUsesLocalLabel(t *testing.T) {
+	if got := sectionName(sectionCurrent); got != "Local" {
+		t.Fatalf("expected sectionCurrent to render as Local, got %q", got)
+	}
+}
+
 func TestMoveGraphPointerClamps(t *testing.T) {
 	if got := moveGraphPointer(0, 10, -1); got != 0 {
 		t.Fatalf("expected top clamp, got %d", got)
@@ -89,8 +95,8 @@ func TestSplitPaneWidthsAreBalanced(t *testing.T) {
 	if left+right != 101 {
 		t.Fatalf("expected widths to sum to total, got %d and %d", left, right)
 	}
-	if diff := right - left; diff < 0 || diff > 1 {
-		t.Fatalf("expected pane widths to stay balanced, got %d and %d", left, right)
+	if left != 30 || right != 71 {
+		t.Fatalf("expected 3:7 split, got %d and %d", left, right)
 	}
 }
 
@@ -131,6 +137,12 @@ func TestShellLayoutAllocatesSmallHeaderAndLargeGraphRail(t *testing.T) {
 	headerHeight := layoutHeaderHeight(bodyHeight)
 	graphRailHeight := layoutGraphRailHeight(bodyHeight)
 
+	if hMargin != 14 {
+		t.Fatalf("expected 10%% horizontal margin, got %d", hMargin)
+	}
+	if topMargin != 6 || bottomMargin != 6 {
+		t.Fatalf("expected 10%% vertical margins, got top=%d bottom=%d", topMargin, bottomMargin)
+	}
 	if bodyWidth != m.width-2*hMargin {
 		t.Fatalf("expected body width to respect horizontal margin, got %d", bodyWidth)
 	}
@@ -397,6 +409,11 @@ func TestRenderAppViewUsesGraphFirstLayout(t *testing.T) {
 			t.Fatalf("expected view to contain %q, got %q", want, got)
 		}
 	}
+	for _, want := range []string{"1 graph", "2 local", "3 remote", "4 tags"} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("expected global hotkey help to contain %q, got %q", want, got)
+		}
+	}
 
 	localIdx := strings.Index(got, "Local")
 	remoteIdx := strings.Index(got, "Remote")
@@ -448,11 +465,11 @@ func TestRenderAppViewUsesOuterMargins(t *testing.T) {
 	if firstVisible == "" || lastVisible == "" {
 		t.Fatalf("expected visible content, got %q", got)
 	}
-	if !strings.HasPrefix(firstVisible, strings.Repeat(" ", 8)) {
-		t.Fatalf("expected top margin of at least 8 spaces, got %q", firstVisible)
+	if !strings.HasPrefix(firstVisible, strings.Repeat(" ", 14)) {
+		t.Fatalf("expected top margin of at least 14 spaces, got %q", firstVisible)
 	}
-	if !strings.HasPrefix(lastVisible, strings.Repeat(" ", 8)) {
-		t.Fatalf("expected bottom/footer margin of at least 8 spaces, got %q", lastVisible)
+	if !strings.HasPrefix(lastVisible, strings.Repeat(" ", 14)) {
+		t.Fatalf("expected bottom/footer margin of at least 14 spaces, got %q", lastVisible)
 	}
 }
 
@@ -571,8 +588,8 @@ func TestNumberKeysSwitchSections(t *testing.T) {
 	if cmd != nil {
 		t.Fatal("expected section switch to be handled synchronously")
 	}
-	if got.activeSection != sectionCurrent {
-		t.Fatalf("expected 1 to switch to local/current section, got %v", got.activeSection)
+	if got.activeSection != sectionGraph {
+		t.Fatalf("expected 1 to switch to graph section, got %v", got.activeSection)
 	}
 
 	gotModel, cmd = got.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'2'}})
@@ -580,8 +597,8 @@ func TestNumberKeysSwitchSections(t *testing.T) {
 	if cmd != nil {
 		t.Fatal("expected section switch to be handled synchronously")
 	}
-	if got.activeSection != sectionRemote {
-		t.Fatalf("expected 2 to switch to remote section, got %v", got.activeSection)
+	if got.activeSection != sectionCurrent {
+		t.Fatalf("expected 2 to switch to local/current section, got %v", got.activeSection)
 	}
 
 	gotModel, cmd = got.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'3'}})
@@ -589,8 +606,8 @@ func TestNumberKeysSwitchSections(t *testing.T) {
 	if cmd != nil {
 		t.Fatal("expected section switch to be handled synchronously")
 	}
-	if got.activeSection != sectionTags {
-		t.Fatalf("expected 3 to switch to tags section, got %v", got.activeSection)
+	if got.activeSection != sectionRemote {
+		t.Fatalf("expected 3 to switch to remote section, got %v", got.activeSection)
 	}
 
 	gotModel, cmd = got.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'4'}})
@@ -598,8 +615,8 @@ func TestNumberKeysSwitchSections(t *testing.T) {
 	if cmd != nil {
 		t.Fatal("expected section switch to be handled synchronously")
 	}
-	if got.activeSection != sectionGraph {
-		t.Fatalf("expected 4 to switch to graph section, got %v", got.activeSection)
+	if got.activeSection != sectionTags {
+		t.Fatalf("expected 4 to switch to tags section, got %v", got.activeSection)
 	}
 }
 

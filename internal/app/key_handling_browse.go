@@ -31,16 +31,16 @@ func (m model) handleBrowseGlobalKey(msg tea.KeyMsg) (bool, tea.Model, tea.Cmd) 
 	case "ctrl+c", "q":
 		return true, m, tea.Quit
 	case "1":
-		m = switchBrowseSection(m, sectionCurrent)
+		m = switchBrowseSection(m, sectionGraph)
 		return true, m, nil
 	case "2":
-		m = switchBrowseSection(m, sectionRemote)
+		m = switchBrowseSection(m, sectionCurrent)
 		return true, m, nil
 	case "3":
-		m = switchBrowseSection(m, sectionTags)
+		m = switchBrowseSection(m, sectionRemote)
 		return true, m, nil
 	case "4":
-		m = switchBrowseSection(m, sectionGraph)
+		m = switchBrowseSection(m, sectionTags)
 		return true, m, nil
 	case "f":
 		m.status.Message = "Fetching..."

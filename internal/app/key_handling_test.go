@@ -25,6 +25,32 @@ func testKeyHandlingModel(repo *git.Repo, status git.Status) model {
 	}
 }
 
+func TestGlobalDigitShortcutsSelectNewSectionOrder(t *testing.T) {
+	m := testKeyHandlingModel(nil, git.Status{Root: "/repo"})
+
+	cases := []struct {
+		key  rune
+		want graphSection
+	}{
+		{key: '1', want: sectionGraph},
+		{key: '2', want: sectionCurrent},
+		{key: '3', want: sectionRemote},
+		{key: '4', want: sectionTags},
+	}
+
+	for _, tt := range cases {
+		gotModel, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{tt.key}})
+		got := gotModel.(model)
+		if cmd != nil {
+			t.Fatalf("expected digit %q to stay synchronous, got %v", tt.key, cmd)
+		}
+		if got.activeSection != tt.want {
+			t.Fatalf("expected digit %q to select %v, got %v", tt.key, tt.want, got.activeSection)
+		}
+		m = got
+	}
+}
+
 func TestBranchOpenEscCancelsDraft(t *testing.T) {
 	fixture := newCommandRepo(t)
 	m := testKeyHandlingModel(fixture.repo, git.Status{Root: fixture.root})

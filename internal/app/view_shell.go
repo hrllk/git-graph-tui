@@ -57,7 +57,7 @@ func renderAppView(m model) string {
 	)
 	headerRow := lipgloss.JoinHorizontal(lipgloss.Top, globalBox, contextBox)
 
-	graphWidth := int(float64(bodyWidth) * 0.72)
+	graphWidth := bodyWidth * 72 / 100
 	if graphWidth < 56 {
 		graphWidth = 56
 	}
@@ -79,34 +79,11 @@ func renderAppView(m model) string {
 	centeredBody := applyOuterMargins(body, bodyWidth, bodyHeight, hMargin, topMargin, bottomMargin)
 
 	if m.status.Mode == state.ModeConfirm || m.status.Mode == state.ModeResetModePick {
-		titleStyle := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("205"))
-		descStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("252"))
-		helpStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("241"))
-		popupBox := lipgloss.NewStyle().
-			Border(lipgloss.RoundedBorder()).
-			BorderForeground(lipgloss.Color("205")).
-			Padding(1, 2).
-			Width(50).
-			Align(lipgloss.Center)
-		popupTitle := m.status.Title
-		if popupTitle == "" || popupTitle == "Confirm" {
-			popupTitle = "Continue?"
-		}
-		helpText := "y: yes  •  n: no"
-		if m.status.Action == state.ActionPull && !m.pullIsFastForward {
-			helpText = "m: merge  •  r: rebase  •  esc: cancel"
-		} else if m.status.Mode == state.ModeResetModePick {
-			helpText = "s: soft  •  m: mixed  •  h: hard  •  enter: execute  •  esc: back"
-		}
-		popupContent := popupBox.Render(
-			titleStyle.Render(popupTitle) + "\n\n" +
-				descStyle.Render(m.status.Detail) + "\n\n" +
-				helpStyle.Render(helpText),
-		)
+		popupContent := renderModalPopup(m, bodyWidth)
 		centeredBody = overlayPopup(centeredBody, popupContent)
 	}
 
-	footer := muted.Render("global: 1 local  •  2 remote  •  3 tags  •  4 graph  •  tab/shift+tab section  •  up/down/j/k move  •  f fetch  •  q quit")
+	footer := muted.Render("tab/shift+tab section  •  up/down/j/k move  •  f fetch  •  q quit")
 	footer = lipgloss.Place(bodyWidth, 1, lipgloss.Center, lipgloss.Center, footer)
 	footer = applyOuterMarginLine(footer, bodyWidth, hMargin)
 
@@ -149,4 +126,43 @@ func applyOuterMarginLine(line string, totalWidth, hMargin int) string {
 	leftPad := strings.Repeat(" ", hMargin)
 	rightPad := strings.Repeat(" ", hMargin)
 	return leftPad + line + rightPad
+}
+
+func renderModalPopup(m model, bodyWidth int) string {
+	titleStyle := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("205"))
+	descStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("252"))
+	helpStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("241"))
+
+	popupWidth := bodyWidth - 12
+	if popupWidth > 54 {
+		popupWidth = 54
+	}
+	if popupWidth < 32 {
+		popupWidth = 32
+	}
+
+	popupBox := lipgloss.NewStyle().
+		Border(lipgloss.RoundedBorder()).
+		BorderForeground(lipgloss.Color("205")).
+		Padding(1, 2).
+		Width(popupWidth).
+		Align(lipgloss.Center)
+
+	popupTitle := m.status.Title
+	if popupTitle == "" || popupTitle == "Confirm" {
+		popupTitle = "Continue?"
+	}
+
+	helpText := "y: yes  •  n: no"
+	if m.status.Action == state.ActionPull && !m.pullIsFastForward {
+		helpText = "m: merge  •  r: rebase  •  esc: cancel"
+	} else if m.status.Mode == state.ModeResetModePick {
+		helpText = "s: soft  •  m: mixed  •  h: hard  •  enter: execute  •  esc: back"
+	}
+
+	return popupBox.Render(
+		titleStyle.Render(popupTitle) + "\n\n" +
+			descStyle.Render(m.status.Detail) + "\n\n" +
+			helpStyle.Render(helpText),
+	)
 }
