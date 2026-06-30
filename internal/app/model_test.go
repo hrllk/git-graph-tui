@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/lipgloss"
 
 	"hrllk/graphkeeper/internal/git"
 	"hrllk/graphkeeper/internal/graph"
@@ -511,6 +512,84 @@ func TestRenderLoadingShowsProgressToastOverlay(t *testing.T) {
 	}
 	if !strings.Contains(got, "Working...") || !strings.Contains(got, "Fetching upstream...") {
 		t.Fatalf("expected loading toast overlay, got %q", got)
+	}
+}
+
+func TestPullFetchWithoutIncomingCommitsShowsTransientToast(t *testing.T) {
+	fixture := newCommandRepo(t)
+	repoStatus := git.Status{
+		Root:          fixture.root,
+		Branch:        "main",
+		Head:          fixture.initialHash,
+		Upstream:      "origin/main",
+		Remote:        "origin",
+		LocalBranches: []string{"main"},
+		Tracking:      map[string]git.BranchTracking{"main": {}},
+	}
+	m := model{
+		status:     state.New().WithBrowse(),
+		repoStatus: repoStatus,
+		sectionCursor: map[graphSection]int{
+			sectionGraph:   0,
+			sectionCurrent: 0,
+			sectionRemote:  0,
+			sectionTags:    0,
+		},
+	}
+
+	gotModel, cmd := m.Update(pullFetchedMsg{status: repoStatus})
+	got := gotModel.(model)
+	if got.status.Mode != state.ModeLoading {
+		t.Fatalf("expected transient loading toast, got %s", got.status.Mode)
+	}
+	if got.status.Message != "Already up to date." {
+		t.Fatalf("expected no-op pull toast message, got %q", got.status.Message)
+	}
+	if got.status.Detail != "Nothing to pull from upstream." {
+		t.Fatalf("expected no-op pull toast detail, got %q", got.status.Detail)
+	}
+	if cmd == nil {
+		t.Fatal("expected transient toast dismissal command")
+	}
+	msg := cmd()
+	done, ok := msg.(pullToastDoneMsg)
+	if !ok {
+		t.Fatalf("expected pullToastDoneMsg, got %T", msg)
+	}
+	gotModel2, cmd2 := got.Update(done)
+	got2 := gotModel2.(model)
+	if cmd2 != nil {
+		t.Fatalf("expected no follow-up command after dismiss, got %v", cmd2)
+	}
+	if got2.status.Mode != state.ModeBrowse {
+		t.Fatalf("expected no-op pull toast to return to browse, got %s", got2.status.Mode)
+	}
+}
+
+func TestOverlayPopupKeepsBaseWidthStable(t *testing.T) {
+	base := strings.Join([]string{
+		"left-panel-content----right-panel",
+		"left-panel-content----right-panel",
+		"left-panel-content----right-panel",
+	}, "\n")
+	popup := strings.Join([]string{
+		"popup",
+		"line",
+	}, "\n")
+
+	got := overlayPopup(base, popup)
+	baseLines := strings.Split(base, "\n")
+	gotLines := strings.Split(got, "\n")
+	if len(baseLines) != len(gotLines) {
+		t.Fatalf("expected overlay to keep line count stable, got %d want %d", len(gotLines), len(baseLines))
+	}
+	for i, line := range gotLines {
+		if width := lipgloss.Width(line); width != lipgloss.Width(baseLines[i]) {
+			t.Fatalf("expected overlay to keep width stable on line %d, got %d want %d: %q", i, width, lipgloss.Width(baseLines[i]), line)
+		}
+	}
+	if !strings.Contains(got, "popup") {
+		t.Fatalf("expected popup content to remain visible, got %q", got)
 	}
 }
 

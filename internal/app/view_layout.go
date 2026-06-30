@@ -4,6 +4,7 @@ import (
 	"strings"
 
 	"github.com/charmbracelet/lipgloss"
+	"github.com/mattn/go-runewidth"
 )
 
 func layoutShellMargins(m model) (hMargin, topMargin, bottomMargin int) {
@@ -206,19 +207,26 @@ func overlayPopup(base string, popup string) string {
 			popupW = w
 		}
 	}
+	baseW := 0
+	for _, l := range baseLines {
+		if w := lipgloss.Width(l); w > baseW {
+			baseW = w
+		}
+	}
+	if popupW > baseW {
+		popupW = baseW
+	}
 	startY := (baseH - popupH) / 2
+	startX := 0
+	if baseW > popupW {
+		startX = (baseW - popupW) / 2
+	}
 	for i, pl := range popupLines {
 		y := startY + i
 		if y >= len(baseLines) {
 			break
 		}
-		bl := baseLines[y]
-		blW := lipgloss.Width(bl)
-		startX := (blW - popupW) / 2
-		if startX < 0 {
-			startX = 0
-		}
-		baseLines[y] = overlayLine(bl, pl, startX, popupW)
+		baseLines[y] = overlayLine(baseLines[y], pl, startX, popupW)
 	}
 	return strings.Join(baseLines, "\n")
 }
@@ -226,24 +234,43 @@ func overlayPopup(base string, popup string) string {
 func overlayLine(baseLine string, popupLine string, startX, popupW int) string {
 	var left strings.Builder
 	var right strings.Builder
-	inAnsi := false
 	visWidth := 0
 	runes := []rune(baseLine)
 	i := 0
 	n := len(runes)
 	for i < n && visWidth < startX {
 		r := runes[i]
-		if r == '\x1b' {
-			inAnsi = true
-		}
 		left.WriteRune(r)
-		if inAnsi {
-			if r == 'm' {
-				inAnsi = false
+		if r == '\x1b' {
+			i++
+			for i < n {
+				left.WriteRune(runes[i])
+				if runes[i] == 'm' {
+					i++
+					break
+				}
+				i++
 			}
-		} else {
-			visWidth++
+			continue
 		}
+		visWidth += runewidth.RuneWidth(r)
+		i++
+	}
+	covered := 0
+	for i < n && covered < popupW {
+		r := runes[i]
+		if r == '\x1b' {
+			i++
+			for i < n {
+				if runes[i] == 'm' {
+					i++
+					break
+				}
+				i++
+			}
+			continue
+		}
+		covered += runewidth.RuneWidth(r)
 		i++
 	}
 	if i < n {

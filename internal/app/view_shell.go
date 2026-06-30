@@ -79,51 +79,74 @@ func renderAppView(m model) string {
 	centeredBody := applyOuterMargins(body, bodyWidth, bodyHeight, hMargin, topMargin, max(bottomMargin-1, 0))
 
 	if m.status.Mode == state.ModeConfirm || m.status.Mode == state.ModeResetModePick {
-		titleStyle := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("205"))
-		descStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("252"))
-		helpStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("241"))
-		popupBox := lipgloss.NewStyle().
-			Border(lipgloss.RoundedBorder()).
-			BorderForeground(lipgloss.Color("205")).
-			Padding(1, 2).
-			Width(50).
-			Align(lipgloss.Center)
-		popupTitle := m.status.Title
-		if popupTitle == "" || popupTitle == "Confirm" {
-			popupTitle = "Continue?"
-		}
-		helpText := "y: yes  •  n: no"
-		if m.status.Action == state.ActionPull && !m.pullIsFastForward {
-			helpText = "m: merge  •  r: rebase  •  esc: cancel"
-		} else if m.status.Mode == state.ModeResetModePick {
-			helpText = "s: soft  •  m: mixed  •  h: hard  •  enter: execute  •  esc: back"
-		}
-		popupContent := popupBox.Render(
-			titleStyle.Render(popupTitle) + "\n\n" +
-				descStyle.Render(m.status.Detail) + "\n\n" +
-				helpStyle.Render(helpText),
-		)
-		centeredBody = overlayPopup(centeredBody, popupContent)
+		centeredBody = overlayPopup(centeredBody, renderConfirmPopup(m, bodyWidth))
 	}
 	if m.status.Mode == state.ModeLoading && !m.branchOpen {
-		titleStyle := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("205"))
-		descStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("252"))
-		popupBox := lipgloss.NewStyle().
-			Border(lipgloss.RoundedBorder()).
-			BorderForeground(lipgloss.Color("205")).
-			Padding(1, 2).
-			Width(44).
-			Align(lipgloss.Center)
-		popupContent := popupBox.Render(
-			titleStyle.Render("Working...") + "\n\n" +
-				descStyle.Render(m.status.Message) + "\n" +
-				descStyle.Render(m.status.Detail),
-		)
-		centeredBody = overlayPopup(centeredBody, popupContent)
+		centeredBody = overlayPopup(centeredBody, renderLoadingPopup(m, bodyWidth))
 	}
 
 	shell := centeredBody + "\n"
 	return lipgloss.Place(m.width, m.height, lipgloss.Center, lipgloss.Top, shell)
+}
+
+func popupWidthForBody(bodyWidth, minWidth, maxWidth int) int {
+	if bodyWidth <= 0 {
+		return minWidth
+	}
+	width := bodyWidth - 12
+	if width > maxWidth {
+		width = maxWidth
+	}
+	if width < minWidth {
+		width = minWidth
+	}
+	if width > bodyWidth {
+		width = bodyWidth
+	}
+	return width
+}
+
+func renderConfirmPopup(m model, bodyWidth int) string {
+	titleStyle := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("205"))
+	descStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("252"))
+	helpStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("241"))
+	popupBox := lipgloss.NewStyle().
+		Border(lipgloss.RoundedBorder()).
+		BorderForeground(lipgloss.Color("205")).
+		Padding(1, 2).
+		Width(popupWidthForBody(bodyWidth, 32, 54)).
+		Align(lipgloss.Center)
+	popupTitle := m.status.Title
+	if popupTitle == "" || popupTitle == "Confirm" {
+		popupTitle = "Continue?"
+	}
+	helpText := "y: yes  •  n: no"
+	if m.status.Action == state.ActionPull && !m.pullIsFastForward {
+		helpText = "m: merge  •  r: rebase  •  esc: cancel"
+	} else if m.status.Mode == state.ModeResetModePick {
+		helpText = "s: soft  •  m: mixed  •  h: hard  •  enter: execute  •  esc: back"
+	}
+	return popupBox.Render(
+		titleStyle.Render(popupTitle) + "\n\n" +
+			descStyle.Render(m.status.Detail) + "\n\n" +
+			helpStyle.Render(helpText),
+	)
+}
+
+func renderLoadingPopup(m model, bodyWidth int) string {
+	titleStyle := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("205"))
+	descStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("252"))
+	popupBox := lipgloss.NewStyle().
+		Border(lipgloss.RoundedBorder()).
+		BorderForeground(lipgloss.Color("205")).
+		Padding(1, 2).
+		Width(popupWidthForBody(bodyWidth, 28, 44)).
+		Align(lipgloss.Center)
+	return popupBox.Render(
+		titleStyle.Render("Working...") + "\n\n" +
+			descStyle.Render(m.status.Message) + "\n" +
+			descStyle.Render(m.status.Detail),
+	)
 }
 
 func (m model) renderRightRail(width, height int) string {

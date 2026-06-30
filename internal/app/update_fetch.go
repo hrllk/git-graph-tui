@@ -2,6 +2,7 @@ package app
 
 import (
 	"fmt"
+	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
 
@@ -100,6 +101,13 @@ func handleFetchUpdate(m model, msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.repoStatus = msg.status
 		syncBrowseState(&m, msg.status)
 		track := m.repoStatus.Tracking[m.repoStatus.Branch]
+		if track.Behind == 0 {
+			m.status = loadingToast("Already up to date.")
+			m.status.Detail = "Nothing to pull from upstream."
+			return m, tea.Tick(900*time.Millisecond, func(time.Time) tea.Msg {
+				return pullToastDoneMsg{}
+			})
+		}
 		isFF := track.Behind > 0 && track.Ahead == 0
 		m.status = loadingToast("Analyzing pull...")
 		return m, loadPullPreviewCommits(m.repo, isFF)
@@ -107,6 +115,13 @@ func handleFetchUpdate(m model, msg tea.Msg) (tea.Model, tea.Cmd) {
 		if msg.err != nil {
 			m.status = state.New().WithBlocked(state.BlockUnknown, "Analysis failed.", msg.err.Error())
 			return m, nil
+		}
+		if len(msg.commits) == 0 {
+			m.status = loadingToast("Already up to date.")
+			m.status.Detail = "Nothing to pull from upstream."
+			return m, tea.Tick(900*time.Millisecond, func(time.Time) tea.Msg {
+				return pullToastDoneMsg{}
+			})
 		}
 		m.handshakeCommits = make(map[string]bool)
 		if msg.isFF {
@@ -130,6 +145,9 @@ func handleFetchUpdate(m model, msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.status = m.status.WithConfirm(state.ActionPull, titleMsg, detailMsg)
 		}
 		m.status.Title = titleMsg
+		return m, nil
+	case pullToastDoneMsg:
+		m.status = deriveStatus(m.repoStatus)
 		return m, nil
 	default:
 		return m, nil

@@ -25,3 +25,15 @@
 - Remove the redundant `Mode` and `Context` labels from the browse shell so the panes read as direct content regions.
 - Size graph paging from the actual graph rail height instead of an arbitrary 76% multiplier so the graph uses the full vertical space available beside the stacked side rail.
 - Keep the graph content area aligned to the graph rail's inner height so the rendered graph fills the same vertical envelope as the stacked Local / Remote / Tags rail.
+
+## 2026-06-30: Popup overlays must replace covered cells, not insert after them
+
+- Confirm and loading popups are rendered as body overlays, but the overlay layer must replace the covered region instead of inserting itself before the remaining line content.
+- Popup width should be derived from the available body width and clamped so the modal cannot expand the shell width or shove the side rails sideways.
+- Keep the overlay logic display-width aware so ANSI styling and wide glyphs do not shift the popup position.
+
+## 2026-06-30: Pull no-op path shows a transient loading toast
+
+- When `pull` finds that the current branch has nothing new to receive from upstream, do not open the merge/rebase confirm flow.
+- Show a transient loading toast instead, with a message that makes the no-op state explicit, and then return to browse state.
+- Keep the no-op path separate from the normal analysis/confirm flow so future pull behavior changes do not accidentally reintroduce a confirm modal for the already-synced case.

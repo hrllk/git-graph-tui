@@ -79,3 +79,5 @@ type pullPreviewReadyMsg struct {
 	isFF    bool
 	err     error
 }
+
+type pullToastDoneMsg struct{}
