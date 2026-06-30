@@ -211,7 +211,7 @@ func TestRenderAppViewKeepsShellPlacementFullWidth(t *testing.T) {
 		status: state.New().WithBrowse(),
 	}
 	got := renderAppView(m)
-	for _, want := range []string{"Global", "Browse", "tab / shift+tab"} {
+	for _, want := range []string{"Global", "Browse", "Actions", "tab: next section", "f: fetch"} {
 		if !strings.Contains(got, want) {
 			t.Fatalf("expected render to contain %q, got %q", want, got)
 		}
@@ -473,7 +473,7 @@ func TestRenderGlobalContentUsesNewDigitMapping(t *testing.T) {
 		},
 	}
 	got := m.renderGlobalContent(40, 14)
-	for _, want := range []string{"Mode: Browse", "tab / shift+tab", "j / k  move", "f / q  fetch / quit"} {
+	for _, want := range []string{"Mode: Browse", "Actions", "tab: next section", "shift+tab: previous section", "j: up", "k: down", "f: fetch", "q: quit"} {
 		if !strings.Contains(got, want) {
 			t.Fatalf("expected global hotkeys to include %q, got %q", want, got)
 		}
@@ -482,6 +482,35 @@ func TestRenderGlobalContentUsesNewDigitMapping(t *testing.T) {
 		if strings.Contains(got, want) {
 			t.Fatalf("expected numeric section hotkeys to be hidden, got %q", got)
 		}
+	}
+}
+
+func TestRenderLoadingShowsProgressToastOverlay(t *testing.T) {
+	m := model{
+		width:  120,
+		height: 40,
+		status: loadingToast("Fetching upstream..."),
+		repoStatus: git.Status{
+			Root:     "/repo",
+			Branch:   "main",
+			Head:     "abc1234",
+			Upstream: "origin/main",
+			Remote:   "origin",
+		},
+		sectionCursor: map[graphSection]int{
+			sectionGraph:   0,
+			sectionCurrent: 0,
+			sectionRemote:  0,
+			sectionTags:    0,
+		},
+	}
+
+	got := renderAppView(m)
+	if strings.Contains(got, "Mode: Loading") || strings.Contains(got, "Loading | Fetching upstream...") {
+		t.Fatalf("expected loading state to stay out of the Global panel, got %q", got)
+	}
+	if !strings.Contains(got, "Working...") || !strings.Contains(got, "Fetching upstream...") {
+		t.Fatalf("expected loading toast overlay, got %q", got)
 	}
 }
 

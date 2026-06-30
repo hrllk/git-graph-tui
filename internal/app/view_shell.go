@@ -105,6 +105,22 @@ func renderAppView(m model) string {
 		)
 		centeredBody = overlayPopup(centeredBody, popupContent)
 	}
+	if m.status.Mode == state.ModeLoading && !m.branchOpen {
+		titleStyle := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("205"))
+		descStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("252"))
+		popupBox := lipgloss.NewStyle().
+			Border(lipgloss.RoundedBorder()).
+			BorderForeground(lipgloss.Color("205")).
+			Padding(1, 2).
+			Width(44).
+			Align(lipgloss.Center)
+		popupContent := popupBox.Render(
+			titleStyle.Render("Working...") + "\n\n" +
+				descStyle.Render(m.status.Message) + "\n" +
+				descStyle.Render(m.status.Detail),
+		)
+		centeredBody = overlayPopup(centeredBody, popupContent)
+	}
 
 	shell := centeredBody + "\n"
 	return lipgloss.Place(m.width, m.height, lipgloss.Center, lipgloss.Top, shell)

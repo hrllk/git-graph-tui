@@ -3,8 +3,6 @@ package app
 import (
 	"fmt"
 
-	"github.com/charmbracelet/lipgloss"
-
 	"hrllk/graphkeeper/internal/state"
 )
 
@@ -13,8 +11,19 @@ func (m model) renderGlobalContent(width, height int) string {
 		return ""
 	}
 	lines := make([]string, 0, height)
-	lines = append(lines, lipgloss.PlaceHorizontal(width, lipgloss.Center, "Mode: "+renderStatusCompact(m.status)))
-	lines = append(lines, lipgloss.PlaceHorizontal(width, lipgloss.Center, "tab / shift+tab  section  •  j / k  move  •  f / q  fetch / quit"))
+	if m.status.Mode == state.ModeLoading && !m.branchOpen {
+		lines = append(lines, "")
+	} else {
+		lines = append(lines, "Mode: "+renderStatusCompact(m.status))
+	}
+	lines = append(lines, "")
+	lines = append(lines, title.Render("Actions"))
+	lines = append(lines, "• tab: next section")
+	lines = append(lines, "• shift+tab: previous section")
+	lines = append(lines, "• j: up")
+	lines = append(lines, "• k: down")
+	lines = append(lines, "• f: fetch")
+	lines = append(lines, "• q: quit")
 	return fitBlockLines(lines, height)
 }
 
@@ -83,7 +92,11 @@ func (m model) renderDetailContent(width, height int) string {
 		return ""
 	}
 	lines := make([]string, 0, height)
-	lines = append(lines, renderStatusCompact(m.status))
+	if m.status.Mode == state.ModeLoading && !m.branchOpen {
+		lines = append(lines, "")
+	} else {
+		lines = append(lines, renderStatusCompact(m.status))
+	}
 	if m.status.WorktreeState != "" {
 		worktree := string(m.status.WorktreeState)
 		if m.status.WorktreeState == state.WorktreeStateDirty {
