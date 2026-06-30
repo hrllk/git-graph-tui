@@ -6,7 +6,6 @@ import (
 	"testing"
 
 	tea "github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/lipgloss"
 
 	"hrllk/graphkeeper/internal/git"
 	"hrllk/graphkeeper/internal/graph"
@@ -186,26 +185,17 @@ func TestGraphPageSizeMatchesGraphPaneHeight(t *testing.T) {
 	}
 }
 
-func TestRenderAppViewPlacesFooterAcrossFullWidth(t *testing.T) {
+func TestRenderAppViewKeepsShellPlacementFullWidth(t *testing.T) {
 	m := model{
 		width:  140,
 		height: 60,
 		status: state.New().WithBrowse(),
 	}
 	got := renderAppView(m)
-	lines := strings.Split(got, "\n")
-	lastVisible := ""
-	for _, line := range lines {
-		if strings.TrimSpace(line) == "" {
-			continue
+	for _, want := range []string{"Global", "Hotkeys", "Mode"} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("expected render to contain %q, got %q", want, got)
 		}
-		lastVisible = line
-	}
-	if lastVisible == "" {
-		t.Fatal("expected rendered output to contain visible content")
-	}
-	if w := lipgloss.Width(lastVisible); w != m.width {
-		t.Fatalf("expected footer line to be placed across full width, got %d want %d", w, m.width)
 	}
 }
 
@@ -437,7 +427,7 @@ func TestRenderAppViewUsesCenteredHeaderAndMainLayout(t *testing.T) {
 	}
 
 	got := renderAppView(m)
-	for _, want := range []string{"Mode - Global", "Mode - Local", "Graph", "Local", "Remote", "Tags"} {
+	for _, want := range []string{"Global", "Local", "Graph", "Remote", "Tags"} {
 		if !strings.Contains(got, want) {
 			t.Fatalf("expected view to contain %q, got %q", want, got)
 		}
@@ -464,8 +454,15 @@ func TestRenderGlobalContentUsesNewDigitMapping(t *testing.T) {
 		},
 	}
 	got := m.renderGlobalContent(40, 14)
-	if !strings.Contains(got, "1 graph") || !strings.Contains(got, "2 local") || !strings.Contains(got, "3 remote") || !strings.Contains(got, "4 tags") {
-		t.Fatalf("expected updated digit mapping in global content, got %q", got)
+	for _, want := range []string{"Mode", "Hotkeys", "tab/shift+tab section", "j/k move", "f fetch", "q quit"} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("expected global hotkeys to include %q, got %q", want, got)
+		}
+	}
+	for _, want := range []string{"1 graph", "2 local", "3 remote", "4 tags"} {
+		if strings.Contains(got, want) {
+			t.Fatalf("expected numeric section hotkeys to be hidden, got %q", got)
+		}
 	}
 }
 
@@ -518,7 +515,7 @@ func TestRenderAppViewUsesOuterMargins(t *testing.T) {
 		t.Fatalf("expected top margin of at least 8 spaces, got %q", firstVisible)
 	}
 	if !strings.HasPrefix(lastVisible, strings.Repeat(" ", 8)) {
-		t.Fatalf("expected bottom/footer margin of at least 8 spaces, got %q", lastVisible)
+		t.Fatalf("expected bottom content to keep horizontal padding, got %q", lastVisible)
 	}
 }
 
@@ -546,7 +543,7 @@ func TestRenderAppViewKeepsHeaderVisibleOnCompactScreens(t *testing.T) {
 	}
 
 	got := renderAppView(m)
-	if !strings.Contains(got, "Mode - Global") || !strings.Contains(got, "Mode - Local") {
+	if !strings.Contains(got, "Global") || !strings.Contains(got, "Local") {
 		t.Fatalf("expected compact render to keep the top header visible, got %q", got)
 	}
 }

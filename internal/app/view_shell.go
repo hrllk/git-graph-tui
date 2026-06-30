@@ -50,10 +50,10 @@ func renderAppView(m model) string {
 
 	globalWidth, contextWidth := splitPaneWidths(bodyWidth)
 	globalBox := baseBox.Width(globalWidth).Height(headerHeight).Render(
-		"Mode - Global\n" + m.renderGlobalContent(max(globalWidth-4, 0), max(headerHeight-3, 0)),
+		"Global\n" + m.renderGlobalContent(max(globalWidth-4, 0), max(headerHeight-3, 0)),
 	)
 	contextBox := baseBox.Width(contextWidth).Height(headerHeight).Render(
-		"Mode - Local\n" + m.renderContextContent(max(contextWidth-4, 0), max(headerHeight-3, 0)),
+		"Local\n" + m.renderContextContent(max(contextWidth-4, 0), max(headerHeight-3, 0)),
 	)
 	headerRow := lipgloss.JoinHorizontal(lipgloss.Top, globalBox, contextBox)
 
@@ -105,10 +105,7 @@ func renderAppView(m model) string {
 		centeredBody = overlayPopup(centeredBody, popupContent)
 	}
 
-	footer := muted.Render("global: 1 graph  •  2 local  •  3 remote  •  4 tags  •  tab/shift+tab section  •  up/down/j/k move  •  f fetch  •  q quit")
-	footer = lipgloss.Place(m.width, 1, lipgloss.Center, lipgloss.Center, footer)
-
-	shell := centeredBody + "\n" + footer + "\n"
+	shell := centeredBody + "\n"
 	return lipgloss.Place(m.width, m.height, lipgloss.Center, lipgloss.Top, shell)
 }
 

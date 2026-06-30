@@ -47,15 +47,15 @@ func layoutHeaderHeight(bodyHeight int) int {
 	if bodyHeight <= 0 {
 		return 0
 	}
-	height := 6
+	height := 8
 	if bodyHeight < 24 {
-		height = 5
+		height = 7
 	}
 	if height > bodyHeight-12 {
 		height = bodyHeight - 12
 	}
-	if height < 4 {
-		height = 4
+	if height < 6 {
+		height = 6
 	}
 	if height >= bodyHeight {
 		height = bodyHeight - 1

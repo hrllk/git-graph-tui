@@ -17,3 +17,10 @@
 - Keep `Global / Context` split at 3:7.
 - Center the full shell in the terminal after composing the inner frame so the layout does not drift left.
 - Keep the footer aligned to the full terminal width instead of reusing the inner body padding.
+
+## 2026-06-30: Global hotkeys live in the top panel and graph paging uses full rail height
+
+- Remove numeric section shortcuts from the browse shell; section switching should rely on tab navigation.
+- Keep `tab/shift+tab`, `up/down/j/k`, `f fetch`, and `q quit` in the top global panel so the main navigation affordances stay visible.
+- Remove the redundant `Mode` and `Context` labels from the browse shell so the panes read as direct content regions.
+- Size graph paging from the actual graph rail height instead of an arbitrary 76% multiplier so the graph uses the full vertical space available beside the stacked side rail.

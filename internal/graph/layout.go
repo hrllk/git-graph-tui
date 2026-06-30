@@ -24,22 +24,7 @@ func PageSize(height int) int {
 	if height <= 12 {
 		return 3
 	}
-	totalHeight := int(float64(height) * 0.76)
-	if totalHeight < 18 {
-		totalHeight = 18
-	}
-	if height > 0 && totalHeight > height-2 {
-		totalHeight = height - 2
-	}
-	top := totalHeight / 8
-	if top < 1 {
-		top = 1
-	}
-	bottom := totalHeight - top
-	if bottom < 1 {
-		bottom = 1
-	}
-	size := bottom - 2
+	size := height - 2
 	if size < 3 {
 		size = 3
 	}

@@ -106,4 +106,7 @@ func TestPageSizeClampsToMinimum(t *testing.T) {
 	if got := PageSize(8); got != 3 {
 		t.Fatalf("expected tiny layout to clamp to 3, got %d", got)
 	}
+	if got := PageSize(24); got != 22 {
+		t.Fatalf("expected page size to use nearly full height, got %d", got)
+	}
 }
