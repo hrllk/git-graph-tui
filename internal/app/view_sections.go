@@ -41,7 +41,7 @@ func renderStatusCompact(s state.Status) string {
 	case state.ModeResetModePick:
 		return ok.Render("Reset")
 	case state.ModeBlocked:
-		return warn.Render("Toast") + " | " + msg
+		return warn.Render("Blocked") + " | " + msg
 	default:
 		return msg
 	}

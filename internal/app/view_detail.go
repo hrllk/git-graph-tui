@@ -13,7 +13,7 @@ func (m model) renderGlobalContent(width, height int) string {
 	lines := make([]string, 0, height)
 	if m.branchOpen {
 		lines = append(lines, "")
-	} else if m.status.Mode == state.ModeLoading {
+	} else if m.status.Mode == state.ModeLoading || m.status.Mode == state.ModeBlocked {
 		lines = append(lines, "")
 	} else {
 		lines = append(lines, "Mode: "+renderStatusCompact(m.status))
@@ -103,7 +103,7 @@ func (m model) renderDetailContent(width, height int) string {
 	lines := make([]string, 0, height)
 	if m.branchOpen {
 		lines = append(lines, "")
-	} else if m.status.Mode == state.ModeLoading {
+	} else if m.status.Mode == state.ModeLoading || m.status.Mode == state.ModeBlocked {
 		lines = append(lines, "")
 	} else {
 		lines = append(lines, renderStatusCompact(m.status))
