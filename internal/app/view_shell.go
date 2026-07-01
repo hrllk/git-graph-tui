@@ -91,6 +91,9 @@ func renderAppView(m model) string {
 	if m.status.Mode == state.ModeLoading && !m.branchOpen {
 		centeredBody = overlayPopup(centeredBody, renderLoadingPopup(m, bodyWidth))
 	}
+	if m.status.Mode == state.ModeBlocked && !m.branchOpen {
+		centeredBody = overlayPopup(centeredBody, renderAlertPopup(blockedAlertContent(m.status), bodyWidth))
+	}
 
 	shell := centeredBody + "\n"
 	return lipgloss.Place(m.width, m.height, lipgloss.Center, lipgloss.Top, shell)

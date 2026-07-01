@@ -150,6 +150,51 @@ func TestCreateBranchShortcutBlockedWhenMergeInProgress(t *testing.T) {
 	}
 }
 
+func TestBlockedAlertEnterDismissesToBrowse(t *testing.T) {
+	fixture := newCommandRepo(t)
+	m := testKeyHandlingModel(fixture.repo, git.Status{
+		Root:          fixture.root,
+		Branch:        "main",
+		Head:          fixture.initialHash,
+		WorktreeDirty: true,
+	})
+	m.status = state.New().WithBlocked(state.BlockUnknown, "Merge unavailable.", "Select a local branch.")
+
+	gotModel, cmd := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	got := gotModel.(model)
+	if cmd != nil {
+		t.Fatalf("expected blocked alert dismiss to stay synchronous, got %v", cmd)
+	}
+	if got.status.Mode != state.ModeBrowse {
+		t.Fatalf("expected browse mode after dismiss, got %s", got.status.Mode)
+	}
+	if got.status.WorktreeState != state.WorktreeStateDirty {
+		t.Fatalf("expected worktree state to be preserved, got %s", got.status.WorktreeState)
+	}
+}
+
+func TestBlockedAlertEscDismissesToBrowse(t *testing.T) {
+	fixture := newCommandRepo(t)
+	m := testKeyHandlingModel(fixture.repo, git.Status{
+		Root:   fixture.root,
+		Branch: "main",
+		Head:   fixture.initialHash,
+	})
+	m.status = state.New().WithBlocked(state.BlockUnknown, "Rebase unavailable.", "Select a local branch.")
+
+	gotModel, cmd := m.Update(tea.KeyMsg{Type: tea.KeyEsc})
+	got := gotModel.(model)
+	if cmd != nil {
+		t.Fatalf("expected blocked alert escape to stay synchronous, got %v", cmd)
+	}
+	if got.status.Mode != state.ModeBrowse {
+		t.Fatalf("expected browse mode after dismiss, got %s", got.status.Mode)
+	}
+	if got.status.WorktreeState != state.WorktreeStateClean {
+		t.Fatalf("expected clean worktree state after dismiss, got %s", got.status.WorktreeState)
+	}
+}
+
 func TestStashShortcutOpensConfirmForDirtyLocalSection(t *testing.T) {
 	fixture := newCommandRepo(t)
 	writeRepoFile(t, fixture.root, "stash.txt", "stash\n")
@@ -444,6 +489,12 @@ func TestBranchOpenSuccessShowsCreatedToast(t *testing.T) {
 	got2 := gotModel2.(model)
 	if cmd2 == nil {
 		t.Fatal("expected branch success toast dismissal command")
+	}
+	if got2.activeSection != sectionGraph {
+		t.Fatalf("expected branch create to focus graph section, got %v", got2.activeSection)
+	}
+	if got2.sectionCursor[sectionGraph] != 0 {
+		t.Fatalf("expected branch create to focus head row, got %d", got2.sectionCursor[sectionGraph])
 	}
 	if got2.status.Mode != state.ModeLoading || got2.status.Message != "Branch created." {
 		t.Fatalf("expected success toast, got %+v", got2.status)

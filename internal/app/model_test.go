@@ -809,6 +809,93 @@ func TestRenderLoadingShowsProgressToastOverlay(t *testing.T) {
 	}
 }
 
+func TestRenderBlockedShowsAlertOverlay(t *testing.T) {
+	m := model{
+		width:  120,
+		height: 40,
+		status: state.New().WithBlocked(state.BlockUnknown, "Select a local branch.", "Move to a branch line."),
+		repoStatus: git.Status{
+			Root:   "/repo",
+			Branch: "main",
+			Head:   "abc1234",
+		},
+		sectionCursor: map[graphSection]int{
+			sectionGraph:   0,
+			sectionCurrent: 0,
+			sectionRemote:  0,
+			sectionTags:    0,
+		},
+	}
+
+	got := renderAppView(m)
+	if strings.Contains(got, "Mode: Blocked") || strings.Contains(got, "Blocked | Select a local branch.") {
+		t.Fatalf("expected blocked state to stay out of the Global panel, got %q", got)
+	}
+	if !strings.Contains(got, "Alert") || !strings.Contains(got, "Select a local branch.") || !strings.Contains(got, "Move to a branch line.") {
+		t.Fatalf("expected blocked alert overlay, got %q", got)
+	}
+	if !strings.Contains(got, "esc/enter: dismiss") {
+		t.Fatalf("expected blocked alert dismiss help, got %q", got)
+	}
+}
+
+func TestRefreshedMsgDoesNotClearBlockedAlert(t *testing.T) {
+	m := model{
+		status: state.New().WithBlocked(state.BlockUnknown, "Select a local branch.", "Move to a branch line."),
+		repoStatus: git.Status{
+			Root:   "/repo",
+			Branch: "main",
+			Head:   "abc1234",
+		},
+		activeSection: sectionGraph,
+		sectionCursor: map[graphSection]int{
+			sectionGraph:   0,
+			sectionCurrent: 0,
+			sectionRemote:  0,
+			sectionTags:    0,
+		},
+	}
+
+	gotModel, _ := m.Update(refreshedMsg{status: git.Status{Root: "/repo", Branch: "main", Head: "def5678"}})
+	got := gotModel.(model)
+	if got.status.Mode != state.ModeBlocked {
+		t.Fatalf("expected blocked mode to persist across refresh, got %s", got.status.Mode)
+	}
+	if got.status.Message != "Select a local branch." {
+		t.Fatalf("expected blocked message to persist, got %q", got.status.Message)
+	}
+}
+
+func TestFetchedMsgDoesNotClearBlockedAlert(t *testing.T) {
+	m := model{
+		status: state.New().WithBlocked(state.BlockUnknown, "Select a local branch.", "Move to a branch line."),
+		repoStatus: git.Status{
+			Root:   "/repo",
+			Branch: "main",
+			Head:   "abc1234",
+		},
+		activeSection: sectionGraph,
+		sectionCursor: map[graphSection]int{
+			sectionGraph:   0,
+			sectionCurrent: 0,
+			sectionRemote:  0,
+			sectionTags:    0,
+		},
+	}
+
+	gotModel, cmd := m.Update(fetchedMsg{status: git.Status{Root: "/repo", Branch: "main", Head: "def5678"}})
+	got := gotModel.(model)
+	if cmd != nil {
+		t.Fatalf("expected fetched update to stay synchronous, got %v", cmd)
+	}
+	if got.status.Mode != state.ModeBlocked {
+		t.Fatalf("expected blocked mode to persist across fetch, got %s", got.status.Mode)
+	}
+	if got.status.Message != "Select a local branch." {
+		t.Fatalf("expected blocked message to persist, got %q", got.status.Message)
+	}
+}
+
 func TestRenderBranchOpenShowsCenteredPopupOverlay(t *testing.T) {
 	m := model{
 		width:       120,
@@ -1376,10 +1463,10 @@ func TestFetchedMsgKeepsPassiveBrowseState(t *testing.T) {
 	}
 }
 
-func TestCheckoutResetsGraphLoadState(t *testing.T) {
+func TestCheckoutFocusesGraphHeadRow(t *testing.T) {
 	m := model{
 		commitLimit:     0,
-		activeSection:   sectionGraph,
+		activeSection:   sectionCurrent,
 		graphScroll:     12,
 		graphLaneCursor: 3,
 		sectionCursor: map[graphSection]int{
@@ -1394,8 +1481,8 @@ func TestCheckoutResetsGraphLoadState(t *testing.T) {
 		Head:          "head",
 		LocalBranches: []string{"tmp1"},
 		GraphCommits: []git.GraphCommit{
-			{Hash: "head", Parents: []string{"base"}, Decorations: []string{"HEAD -> tmp1", "tmp1"}},
 			{Hash: "base"},
+			{Hash: "head", Parents: []string{"base"}, Decorations: []string{"HEAD -> tmp1", "tmp1"}},
 		},
 	}
 	gotModel, _ := m.Update(executedMsg{action: state.ActionCheckout, target: "tmp1", status: status})
@@ -1403,11 +1490,63 @@ func TestCheckoutResetsGraphLoadState(t *testing.T) {
 	if got.commitLimit != 0 {
 		t.Fatalf("expected checkout to reset graph load limit to unlimited, got %d", got.commitLimit)
 	}
-	if got.graphScroll != 0 || got.sectionCursor[sectionGraph] != 0 {
-		t.Fatalf("expected checkout to reset graph cursor and scroll, got cursor=%d scroll=%d", got.sectionCursor[sectionGraph], got.graphScroll)
+	if got.activeSection != sectionGraph {
+		t.Fatalf("expected checkout to focus graph section, got %v", got.activeSection)
 	}
-	if got.graphLaneCursor != 0 {
-		t.Fatalf("expected checkout to reset lane cursor to current branch lane, got %d", got.graphLaneCursor)
+	rows := graph.Rows(status)
+	headRow := findGraphRowByHash(rows, status.Head)
+	if headRow < 0 {
+		t.Fatalf("expected head row for %q", status.Head)
+	}
+	if got.sectionCursor[sectionGraph] != headRow {
+		t.Fatalf("expected checkout to focus head row %d, got %d", headRow, got.sectionCursor[sectionGraph])
+	}
+	wantPage := graphPageSizeForRows(&m, rows, headRow, graphContentHeightForModel(&m))
+	if got.graphScroll != clampScroll(headRow, len(rows), wantPage) {
+		t.Fatalf("expected checkout to clamp scroll to head row, got %d", got.graphScroll)
+	}
+	if got.graphLaneCursor != graph.PointerLane(rows[headRow]) {
+		t.Fatalf("expected checkout to align lane cursor to head row, got %d want %d", got.graphLaneCursor, graph.PointerLane(rows[headRow]))
+	}
+}
+
+func TestBranchCreateFocusesGraphHeadRow(t *testing.T) {
+	m := model{
+		status:          loadingToast("Branch created."),
+		activeSection:   sectionCurrent,
+		graphScroll:     9,
+		graphLaneCursor: 2,
+		sectionCursor: map[graphSection]int{
+			sectionGraph:   6,
+			sectionCurrent: 0,
+			sectionRemote:  0,
+			sectionTags:    0,
+		},
+	}
+	status := git.Status{
+		Branch:        "feature/new-flow",
+		Head:          "head",
+		LocalBranches: []string{"feature/new-flow"},
+		GraphCommits: []git.GraphCommit{
+			{Hash: "base"},
+			{Hash: "head", Parents: []string{"base"}, Decorations: []string{"HEAD -> feature/new-flow", "feature/new-flow"}},
+		},
+	}
+	gotModel, _ := m.Update(createdBranchMsg{name: "feature/new-flow", base: "base", status: status})
+	got := gotModel.(model)
+	if got.activeSection != sectionGraph {
+		t.Fatalf("expected branch create to focus graph section, got %v", got.activeSection)
+	}
+	rows := graph.Rows(status)
+	headRow := findGraphRowByHash(rows, status.Head)
+	if headRow < 0 {
+		t.Fatalf("expected head row for %q", status.Head)
+	}
+	if got.sectionCursor[sectionGraph] != headRow {
+		t.Fatalf("expected branch create to focus head row %d, got %d", headRow, got.sectionCursor[sectionGraph])
+	}
+	if got.graphLaneCursor != graph.PointerLane(rows[headRow]) {
+		t.Fatalf("expected branch create to align lane cursor to head row, got %d want %d", got.graphLaneCursor, graph.PointerLane(rows[headRow]))
 	}
 }
 
@@ -2103,16 +2242,6 @@ func TestResetModePickerRendersCompactResetOnly(t *testing.T) {
 	}
 	if got := renderStatusCompact(m.status); got != ok.Render("Reset") {
 		t.Fatalf("expected compact reset status to hide extra text, got %q", got)
-	}
-}
-
-func TestBlockedStatusRendersAsToast(t *testing.T) {
-	got := renderStatusCompact(state.Status{Mode: state.ModeBlocked, Message: "Select a local branch."})
-	if !strings.Contains(got, "Toast") {
-		t.Fatalf("expected blocked status to render as toast, got %q", got)
-	}
-	if !strings.Contains(got, "Select a local branch.") {
-		t.Fatalf("expected toast message to be preserved, got %q", got)
 	}
 }
 

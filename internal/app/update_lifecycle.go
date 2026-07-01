@@ -39,7 +39,7 @@ func handleLifecycleUpdate(m model, msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		m.repoStatus = msg.status
 		syncBrowseState(&m, msg.status)
-		if !m.branchOpen && (m.status.Mode == state.ModeBrowse || m.status.Mode == state.ModeBlocked || m.status.Mode == state.ModeEmpty || m.status.Mode == state.ModeError) {
+		if !m.branchOpen && (m.status.Mode == state.ModeBrowse || m.status.Mode == state.ModeEmpty || m.status.Mode == state.ModeError) {
 			m.status = deriveStatus(msg.status)
 		}
 		return m, loadStashState(m.repo)
