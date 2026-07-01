@@ -212,6 +212,16 @@ func (m model) handleBrowseGraphKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		base := branchCreateBaseForActiveSection(m)
 		m, _ = startBranchCreateInput(m, base)
 		return m, nil
+	case "d":
+		selection := deleteBranchSelection(m)
+		if !selection.ok {
+			m.status = selection.blocked
+			return m, nil
+		}
+		m.status = state.New().WithConfirm(state.ActionDeleteBranch, selection.title, selection.detail)
+		m.status.Title = selection.title
+		m.status.Selected = selection.target
+		return m, nil
 	default:
 		return m, nil
 	}
@@ -271,6 +281,19 @@ func (m model) handleBrowseSectionKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		if m.activeSection == sectionCurrent {
 			base := branchCreateBaseForActiveSection(m)
 			m, _ = startBranchCreateInput(m, base)
+			return m, nil
+		}
+		return m, nil
+	case "d":
+		if m.activeSection == sectionGraph || m.activeSection == sectionCurrent || m.activeSection == sectionRemote {
+			selection := deleteBranchSelection(m)
+			if !selection.ok {
+				m.status = selection.blocked
+				return m, nil
+			}
+			m.status = state.New().WithConfirm(state.ActionDeleteBranch, selection.title, selection.detail)
+			m.status.Title = selection.title
+			m.status.Selected = selection.target
 			return m, nil
 		}
 		return m, nil

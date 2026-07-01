@@ -402,6 +402,69 @@ func TestExecutePushVariants(t *testing.T) {
 	})
 }
 
+func TestExecuteDeleteBranchVariants(t *testing.T) {
+	t.Run("local branch delete", func(t *testing.T) {
+		fixture := newCommandRepo(t)
+		runGit(t, fixture.root, "checkout", "-b", "feature")
+		runGit(t, fixture.root, "checkout", "main")
+
+		got, ok := cmdResult(t, executeDeleteBranch(fixture.repo, "feature", false, 40)).(executedMsg)
+		if !ok {
+			t.Fatalf("expected executedMsg, got %T", cmdResult(t, executeDeleteBranch(fixture.repo, "feature", false, 40)))
+		}
+		if got.action != state.ActionDeleteBranch {
+			t.Fatalf("action = %s, want delete-branch", got.action)
+		}
+		if got.err != nil {
+			t.Fatalf("local delete err = %v", got.err)
+		}
+		if got.target != "feature" {
+			t.Fatalf("expected local delete target feature, got %q", got.target)
+		}
+		branchList := runGit(t, fixture.root, "branch", "--list", "feature")
+		if branchList != "" {
+			t.Fatalf("expected feature branch to be deleted, got %q", branchList)
+		}
+	})
+
+	t.Run("current branch delete blocked", func(t *testing.T) {
+		fixture := newCommandRepo(t)
+		got, ok := cmdResult(t, executeDeleteBranch(fixture.repo, "main", false, 40)).(executedMsg)
+		if !ok {
+			t.Fatalf("expected executedMsg, got %T", cmdResult(t, executeDeleteBranch(fixture.repo, "main", false, 40)))
+		}
+		if got.err == nil {
+			t.Fatal("expected current branch delete to fail")
+		}
+		if !strings.Contains(got.err.Error(), "current branch cannot be deleted") {
+			t.Fatalf("expected current branch error, got %v", got.err)
+		}
+	})
+
+	t.Run("origin branch delete", func(t *testing.T) {
+		fixture := newCommandRepo(t)
+		runGit(t, fixture.root, "checkout", "-b", "feature")
+		makeLocalCommit(t, fixture.root, "feature.txt", "feature\n", "feature commit")
+		runGit(t, fixture.root, "push", "-u", "origin", "feature")
+		runGit(t, fixture.root, "checkout", "main")
+
+		got, ok := cmdResult(t, executeDeleteBranch(fixture.repo, "feature", true, 40)).(executedMsg)
+		if !ok {
+			t.Fatalf("expected executedMsg, got %T", cmdResult(t, executeDeleteBranch(fixture.repo, "feature", true, 40)))
+		}
+		if got.action != state.ActionDeleteBranch {
+			t.Fatalf("action = %s, want delete-branch", got.action)
+		}
+		if got.err != nil {
+			t.Fatalf("origin delete err = %v", got.err)
+		}
+		if got.target != "origin/feature" {
+			t.Fatalf("expected origin delete target origin/feature, got %q", got.target)
+		}
+		runGitExpectError(t, fixture.remote, "show-ref", "--verify", "refs/heads/feature")
+	})
+}
+
 func TestExecuteCheckoutKeepsRemoteFallback(t *testing.T) {
 	fixture := newCommandRepo(t)
 	advanceRemoteBranch(t, fixture.remote, "feature", "feature.txt", "feature\n", "feature branch")

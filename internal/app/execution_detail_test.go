@@ -20,6 +20,8 @@ func TestExecutionDetail(t *testing.T) {
 		{name: "merge empty branch", action: state.ActionMerge, target: "feature", want: "Merge complete. HEAD now reflects - with target feature."},
 		{name: "rebase", action: state.ActionRebase, target: "feature", want: "Rebase complete. The branch was replayed on top of feature."},
 		{name: "reset", action: state.ActionReset, target: "feature", want: "Hard reset complete. HEAD now points at feature."},
+		{name: "delete local", action: state.ActionDeleteBranch, target: "feature", want: "Branch deleted: feature."},
+		{name: "delete origin", action: state.ActionDeleteBranch, target: "origin/feature", want: "Origin branch deleted: origin/feature."},
 		{name: "default", action: state.ActionNone, want: "Action complete."},
 	}
 

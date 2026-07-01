@@ -144,6 +144,18 @@ func renderActionHelpLines(m model) []string {
 			lines = append(lines, "• s: reset         • ctrl+u/d: scroll")
 			lines = append(lines, "• gg: top         • G: bottom")
 			lines = append(lines, "• H: jump to HEAD")
+			deleteLabel := "• d: delete branch"
+			if !isLocalGraphPointer(m.repoStatus, m.sectionCursor[sectionGraph], m.graphLaneCursor) {
+				lines = append(lines, disabled.Render(deleteLabel)+" "+muted.Render("(local lane only)"))
+			} else {
+				focus := currentGraphFocus(m.repoStatus, m.sectionCursor[sectionGraph])
+				target := checkoutTargetFromFocus(focus)
+				if target != "" && !m.repoStatus.Detached && target == m.repoStatus.Branch {
+					lines = append(lines, disabled.Render(deleteLabel)+" "+muted.Render("(current branch)"))
+				} else {
+					lines = append(lines, deleteLabel)
+				}
+			}
 			if canCreateBranch(m.repoStatus) {
 				lines = append(lines, "• n: new branch")
 			} else {
@@ -154,6 +166,12 @@ func renderActionHelpLines(m model) []string {
 				lines = append(lines, disabled.Render("• space: checkout")+" "+muted.Render("(dirty)"))
 			} else {
 				lines = append(lines, "• space: checkout")
+			}
+			deleteLabel := "• d: delete branch"
+			if item, ok := activeSectionTargetItem(m); ok && m.activeSection == sectionCurrent && item.Current {
+				lines = append(lines, disabled.Render(deleteLabel)+" "+muted.Render("(current branch)"))
+			} else {
+				lines = append(lines, deleteLabel)
 			}
 			if m.activeSection == sectionCurrent {
 				if pullReady(m.repoStatus) {

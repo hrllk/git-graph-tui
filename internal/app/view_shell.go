@@ -130,6 +130,8 @@ func renderConfirmPopup(m model, bodyWidth int) string {
 	helpText := "y: yes  •  n: no"
 	if m.status.Action == state.ActionPull && !m.pullIsFastForward {
 		helpText = "m: merge  •  r: rebase  •  esc: cancel"
+	} else if m.status.Action == state.ActionDeleteBranch {
+		helpText = "y: delete  •  n: cancel"
 	}
 	return popupBox.Render(
 		titleStyle.Render(popupTitle) + "\n\n" +

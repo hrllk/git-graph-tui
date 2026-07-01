@@ -42,6 +42,11 @@ func handleExecutedUpdate(m model, msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.status.Title = titleMsg
 			return m, nil
 		}
+		if msg2.action == state.ActionDeleteBranch && strings.Contains(msg2.err.Error(), "current branch cannot be deleted") {
+			m.status = state.New().WithBlocked(state.BlockUnknown, "Current branch cannot be deleted.", "Select a different local branch.")
+			telemetry.Log("app", "execute_failed", map[string]string{"action": string(msg2.action), "target": msg2.target, "error": msg2.err.Error()})
+			return m, nil
+		}
 		if (msg2.action == state.ActionPull || msg2.action == state.ActionPullMerge || msg2.action == state.ActionPullRebase) && (msg2.status.MergeInProgress || msg2.status.RebaseInProgress) {
 			m.repoStatus = msg2.status
 			syncBrowseState(&m, msg2.status)
@@ -93,6 +98,12 @@ func handleExecutedUpdate(m model, msg tea.Msg) (tea.Model, tea.Cmd) {
 			detail = "Check credentials or network: " + msg2.err.Error()
 		} else if msg2.action == state.ActionPush || msg2.action == state.ActionForcePush || msg2.action == state.ActionSetUpstream {
 			message = "Push failed."
+		} else if msg2.action == state.ActionDeleteBranch {
+			message = "Branch delete failed."
+			if strings.Contains(detail, "branch not found") {
+				message = "Branch not found."
+				detail = "Refresh the branch list and try again."
+			}
 		}
 		m.status = state.New().WithBlocked(reason, message, detail)
 		telemetry.Log("app", "execute_failed", map[string]string{"action": string(msg2.action), "target": msg2.target, "error": msg2.err.Error()})
@@ -110,6 +121,21 @@ func handleExecutedUpdate(m model, msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		telemetry.Log("app", "execute_action", map[string]string{
 			"action": string(msg2.action),
+			"head":   msg2.status.Head,
+		})
+		return m, nil
+	}
+	if msg2.action == state.ActionDeleteBranch {
+		syncBrowseState(&m, msg2.status)
+		m.status = deriveStatus(msg2.status)
+		if strings.HasPrefix(msg2.target, "origin/") {
+			m.status.Message = "Origin branch deleted."
+		} else {
+			m.status.Message = "Branch deleted."
+		}
+		telemetry.Log("app", "execute_action", map[string]string{
+			"action": string(msg2.action),
+			"target": msg2.target,
 			"head":   msg2.status.Head,
 		})
 		return m, nil

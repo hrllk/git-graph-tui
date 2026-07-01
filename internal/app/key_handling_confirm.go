@@ -42,6 +42,11 @@ func (m model) handleConfirmAccept() (tea.Model, tea.Cmd) {
 	case state.ActionForcePush:
 		m.status = loadingToast("Force pushing...")
 		return m, executeForcePush(m.repo, m.repoStatus.Branch, m.commitLimit)
+	case state.ActionDeleteBranch:
+		target := m.status.Selected
+		remote := m.activeSection == sectionRemote
+		m.status = loadingToast(deleteBranchLoadingMessage(remote))
+		return m, executeDeleteBranch(m.repo, target, remote, m.commitLimit)
 	case state.ActionCheckout:
 		target := m.status.Selected
 		if target == "" {
