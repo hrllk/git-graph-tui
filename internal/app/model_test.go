@@ -2089,6 +2089,16 @@ func TestResetModePickerRendersCompactResetOnly(t *testing.T) {
 	}
 }
 
+func TestBlockedStatusRendersAsToast(t *testing.T) {
+	got := renderStatusCompact(state.Status{Mode: state.ModeBlocked, Message: "Select a local branch."})
+	if !strings.Contains(got, "Toast") {
+		t.Fatalf("expected blocked status to render as toast, got %q", got)
+	}
+	if !strings.Contains(got, "Select a local branch.") {
+		t.Fatalf("expected toast message to be preserved, got %q", got)
+	}
+}
+
 func TestRenderResetModePopupUsesSingleModeList(t *testing.T) {
 	got := renderResetModePopup(60)
 	if strings.Contains(got, "enter: execute") {
