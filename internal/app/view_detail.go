@@ -34,8 +34,9 @@ func (m model) renderContextContent(width, height int) string {
 	if height <= 0 {
 		return ""
 	}
-	leftLines := m.renderContextInfoLines(width)
-	rightLines := renderActionHelpLines(m)
+	sectionTitle := sectionName(m.activeSection)
+	leftLines := append([]string{title.Render(sectionTitle + " Details")}, m.renderContextInfoLines(width)...)
+	rightLines := append([]string{title.Render(sectionTitle + " Actions")}, renderActionHelpLines(m)...)
 	return renderSplitColumns(leftLines, rightLines, width, height)
 }
 

@@ -221,7 +221,7 @@ func (m model) renderRightRail(width, height int) string {
 		sectionHeight = 1
 	}
 	localHeight, remoteHeight, tagsHeight := splitThreeHeights(sectionHeight)
-	localBox := m.getBoxStyle(sectionCurrent).Width(width).Height(localHeight).Render("Local\n" + m.renderSectionContent(sectionCurrent, max(width-4, 0), max(localHeight-3, 0)))
+	localBox := m.getBoxStyle(sectionCurrent).Width(width).Height(localHeight).Render("Context\n" + m.renderSectionContent(sectionCurrent, max(width-4, 0), max(localHeight-3, 0)))
 	remoteBox := m.getBoxStyle(sectionRemote).Width(width).Height(remoteHeight).Render("Remote\n" + m.renderSectionContent(sectionRemote, max(width-4, 0), max(remoteHeight-3, 0)))
 	tagsBox := m.getBoxStyle(sectionTags).Width(width).Height(tagsHeight).Render("Tags\n" + m.renderSectionContent(sectionTags, max(width-4, 0), max(tagsHeight-3, 0)))
 	return lipgloss.JoinVertical(lipgloss.Left, localBox, remoteBox, tagsBox)

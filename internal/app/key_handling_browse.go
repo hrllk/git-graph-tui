@@ -248,7 +248,7 @@ func (m model) handleBrowseSectionKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		if m.activeSection == sectionGraph {
 			return m, nil
 		}
-		m.status = state.New().WithBlocked(state.BlockUnknown, "Checkout unavailable here.", "Use the Local or Remote section.")
+		m.status = state.New().WithBlocked(state.BlockUnknown, "Checkout unavailable here.", "Use the Context or Remote section.")
 		return m, nil
 	case "s":
 		if m.activeSection == sectionCurrent {

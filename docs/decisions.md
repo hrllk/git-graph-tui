@@ -44,3 +44,10 @@
 - When `pull` finds that the current branch has nothing new to receive from upstream, do not open the merge/rebase confirm flow.
 - Show a transient loading toast instead, with a message that makes the no-op state explicit, and then return to browse state.
 - Keep the no-op path separate from the normal analysis/confirm flow so future pull behavior changes do not accidentally reintroduce a confirm modal for the already-synced case.
+
+## 2026-07-01: Graph local lane and divergence are separate gates
+
+- Treat `Graph` local-lane detection as a display and navigation concern, not as the final merge/rebase execution rule.
+- Consider commits on a local branch's passed path as local for Graph highlighting and shortcut availability.
+- Require `HEAD...target` divergence analysis to decide whether merge/rebase is actually meaningful.
+- Do not enable Graph merge/rebase for fast-forward-only or already-contained ancestor cases.

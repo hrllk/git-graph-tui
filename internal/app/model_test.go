@@ -529,6 +529,9 @@ func TestRenderContextContentSplitsInfoAndActions(t *testing.T) {
 	if !strings.Contains(got, "target:") || !strings.Contains(got, "worktree:") {
 		t.Fatalf("expected left info column to include current branch details, got %q", got)
 	}
+	if !strings.Contains(got, "Context Details") || !strings.Contains(got, "Context Actions") {
+		t.Fatalf("expected context header to prefix details/actions with the focused section name, got %q", got)
+	}
 	if !strings.Contains(got, "• space: checkout") || !strings.Contains(got, "• p: pull") {
 		t.Fatalf("expected right actions column to include browse actions, got %q", got)
 	}
@@ -564,6 +567,44 @@ func TestRenderContextContentKeepsSplitLayoutOnNarrowWidth(t *testing.T) {
 	}
 	if !strings.Contains(got, "focus:") || !strings.Contains(got, "m: merge") {
 		t.Fatalf("expected narrow split context to keep info and actions visible, got %q", got)
+	}
+}
+
+func TestRenderContextContentUsesSectionNameInHeaders(t *testing.T) {
+	tests := []struct {
+		name       string
+		active     graphSection
+		wantPrefix string
+	}{
+		{name: "current", active: sectionCurrent, wantPrefix: "Context"},
+		{name: "graph", active: sectionGraph, wantPrefix: "Graph"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			m := model{
+				status: state.New().WithBrowse(),
+				repoStatus: git.Status{
+					Branch:        "main",
+					Head:          "abc1234",
+					Upstream:      "origin/main",
+					Remote:        "origin",
+					LocalBranches: []string{"main"},
+					GraphCommits: []git.GraphCommit{
+						{Hash: "abc1234", Subject: "Commit 1"},
+					},
+				},
+				sectionCursor: map[graphSection]int{
+					sectionGraph:   0,
+					sectionCurrent: 0,
+				},
+			}
+			m.activeSection = tt.active
+
+			got := m.renderContextContent(60, 12)
+			if !strings.Contains(got, tt.wantPrefix+" Details") || !strings.Contains(got, tt.wantPrefix+" Actions") {
+				t.Fatalf("expected headers to use %q prefix, got %q", tt.wantPrefix, got)
+			}
+		})
 	}
 }
 
@@ -676,20 +717,20 @@ func TestRenderAppViewUsesCenteredHeaderAndMainLayout(t *testing.T) {
 	}
 
 	got := renderAppView(m)
-	for _, want := range []string{"Global", "Local", "Graph", "Remote", "Tags"} {
+	for _, want := range []string{"Global", "Context", "Graph", "Remote", "Tags"} {
 		if !strings.Contains(got, want) {
 			t.Fatalf("expected view to contain %q, got %q", want, got)
 		}
 	}
 
-	localIdx := strings.Index(got, "Local")
+	localIdx := strings.Index(got, "Context")
 	remoteIdx := strings.Index(got, "Remote")
 	tagsIdx := strings.Index(got, "Tags")
 	if localIdx < 0 || remoteIdx < 0 || tagsIdx < 0 {
 		t.Fatalf("expected right rail sections to appear in output, got %q", got)
 	}
 	if !(localIdx < remoteIdx && remoteIdx < tagsIdx) {
-		t.Fatalf("expected Local / Remote / Tags to stack in order, got %d / %d / %d", localIdx, remoteIdx, tagsIdx)
+		t.Fatalf("expected Context / Remote / Tags to stack in order, got %d / %d / %d", localIdx, remoteIdx, tagsIdx)
 	}
 }
 
@@ -855,9 +896,9 @@ func TestOverlayPopupKeepsBaseWidthStable(t *testing.T) {
 	}
 }
 
-func TestSectionNameUsesLocalLabel(t *testing.T) {
-	if got := sectionName(sectionCurrent); got != "Local" {
-		t.Fatalf("expected sectionCurrent to be labeled Local, got %q", got)
+func TestSectionNameUsesContextLabel(t *testing.T) {
+	if got := sectionName(sectionCurrent); got != "Context" {
+		t.Fatalf("expected sectionCurrent to be labeled Context, got %q", got)
 	}
 }
 
@@ -932,7 +973,7 @@ func TestRenderAppViewKeepsHeaderVisibleOnCompactScreens(t *testing.T) {
 	}
 
 	got := renderAppView(m)
-	if !strings.Contains(got, "Global") || !strings.Contains(got, "Local") {
+	if !strings.Contains(got, "Global") || !strings.Contains(got, "Context") {
 		t.Fatalf("expected compact render to keep the top header visible, got %q", got)
 	}
 }
@@ -1771,7 +1812,7 @@ func TestRenderRightRailRendersStackedCards(t *testing.T) {
 	if len(lines) != 12 {
 		t.Fatalf("expected right rail to keep stacked card height, got %d lines: %q", len(lines), got)
 	}
-	for _, want := range []string{"Local", "Remote", "Tags"} {
+	for _, want := range []string{"Context", "Remote", "Tags"} {
 		if !strings.Contains(got, want) {
 			t.Fatalf("expected right rail to contain %q, got %q", want, got)
 		}

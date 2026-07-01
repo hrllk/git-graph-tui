@@ -96,7 +96,7 @@ func deleteBranchSelection(m model) branchDeleteSelection {
 		}
 	default:
 		return branchDeleteSelection{
-			blocked: state.New().WithBlocked(state.BlockUnknown, "Delete unavailable here.", "Use the Local or Remote section."),
+			blocked: state.New().WithBlocked(state.BlockUnknown, "Delete unavailable here.", "Use the Context or Remote section."),
 		}
 	}
 }

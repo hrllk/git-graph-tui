@@ -49,6 +49,15 @@ type previewMsg struct {
 	err    error
 }
 
+type graphActionCheckMsg struct {
+	action      state.Action
+	target      string
+	repo        git.Status
+	currentOnly int
+	targetOnly  int
+	err         error
+}
+
 type executedMsg struct {
 	action    state.Action
 	target    string

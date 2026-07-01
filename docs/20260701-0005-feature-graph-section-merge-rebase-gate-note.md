@@ -13,6 +13,17 @@
 
 즉, 지금 gate 는 **그래프 토폴로지**가 아니라 **로컬 포인터 여부**에 가깝다.
 
+### 현재 구현에서 local 로 인정되는 범위
+
+현행 `isLocalGraphPointer()` 는 tip 하나만 보는 함수가 아니다.
+`graph` 가 붙은 라인에서는 다음을 모두 local 로 볼 수 있다.
+
+- `HEAD -> branch` 가 붙은 현재 tip
+- local 브랜치 decoration 이 붙은 과거 커밋
+- local lane 이 이어진 그래프 경로 위의 커밋
+
+즉, Graph 에서 “local lane” 은 브랜치 끝점뿐 아니라 **그 브랜치가 지나온 경로**까지 포함한다.
+
 ## 문제 정의
 
 이번에 바꾸려는 조건은 “로컬 브랜치에 서 있으면 된다”가 아니다.
@@ -23,6 +34,14 @@
 3. 선택된 커밋이 `HEAD` 와 관계를 가질 때, 그 관계가 “이미 포함됨”이나 “fast-forward 가능” 같은 단순 케이스가 아니라, **양쪽이 각각 고유 커밋을 가진 분기 상태**여야 한다.
 
 말을 줄이면, `Graph` 에서 `merge` / `rebase` 를 살릴 이유는 **실제로 갈라진 두 히스토리를 다루는 경우**다.
+
+이 문장에서 중요한 점은 두 층위가 다르다는 것이다.
+
+1. **표시 층위**: 이 커밋이 local lane 위에 있는가
+2. **실행 층위**: 이 target 이 `HEAD` 와 실제로 분기된 상태인가
+
+지금 혼란이 생기는 이유는 이 둘이 같은 조건처럼 읽히기 때문이다.
+실제로는 다르다.
 
 ## 정리해야 할 판단 기준
 
@@ -41,6 +60,14 @@
 | `currentOnly > 0 && targetOnly > 0` | 서로 분기된 상태 | 활성 후보 |
 
 여기서 핵심은 “HEAD 보다 앞서나가지 않은 커밋” 같은 서술보다, **양쪽 고유 커밋이 동시에 존재하는가**로 보는 편이 훨씬 덜 애매하다는 점이다.
+
+### 해석 주의
+
+- `currentOnly == 0 && targetOnly > 0` 은 fast-forward 가능 상태다.
+  - 이건 Graph merge/rebase gate 에 넣기보다 pull 쪽으로 보내는 편이 낫다.
+- `currentOnly > 0 && targetOnly == 0` 은 target 이 HEAD 의 과거에 있는 상태다.
+  - 이건 이미 포함된 history 쪽이다.
+  - merge 는 대체로 새로 할 일이 없고, rebase 는 current branch 이후 커밋을 다시 쌓는 동작이 된다.
 
 ## 권장 해석
 
@@ -75,6 +102,8 @@ Graph 섹션의 `merge` / `rebase` 는 다음 조건을 모두 만족할 때만 
   - ancestor 는 이미 포함된 히스토리일 수 있다.
 - `merge` 와 `rebase` 를 같은 gate 로 묶되, 실행 시점의 세부 의미는 preview 단계에서 분리해야 한다.
 - UI 문구는 “local lane only” 보다 “diverged branch only” 쪽이 더 정확할 수 있다.
+- ancestor 를 “이미 지나간 커밋”으로만 처리하면 안 된다.
+  - 실행 결과가 no-op 인지, 재배치인지, fast-forward 인지 구분해야 한다.
 
 ## 이미 지나간 커밋의 활성 여부
 
@@ -90,7 +119,7 @@ Graph 섹션의 `merge` / `rebase` 는 다음 조건을 모두 만족할 때만 
 
 ## 그 상태에서의 실행 의미
 
-선택한 대상이 이미 `HEAD` 의 history 안에 있는 경우, `previewSelection()` 은 `git rev-list --left-right --count HEAD...target` 결과를 보고 분기 여부를 계산한다.
+현행 구현에서 선택한 대상이 이미 `HEAD` 의 history 안에 있는 경우, `previewSelection()` 은 `git rev-list --left-right --count HEAD...target` 결과를 보고 분기 여부를 계산한다.
 
 - `targetOnly == 0` 이면 target 은 이미 포함된 커밋이다.
 - 이 경우 `merge` 는 사실상 이미 반영된 상태로 끝날 가능성이 높다.
@@ -100,6 +129,25 @@ Graph 섹션의 `merge` / `rebase` 는 다음 조건을 모두 만족할 때만 
 
 - `merge`: 대체로 no-op 또는 already up to date 계열
 - `rebase`: 현재 브랜치의 이후 커밋을 다시 재배열하는 작업
+
+## 구현 분리 기준
+
+이 문서가 원하는 최종 구조는 다음처럼 나뉜다.
+
+- `isLocalGraphPointer()` 는 Graph 상의 **local lane 판정**만 담당한다.
+- `previewSelection()` 과 `buildActionPreview()` 는 **실행 가능한지와 그 의미**를 담당한다.
+- `merge` / `rebase` 의 최종 허용 여부는 그래프 위치와 divergence 판정을 함께 반영한다.
+
+정리하면,
+
+| 구분 | 현재 구현 | 목표 |
+| --- | --- | --- |
+| Graph local 판정 | local tip + local path 를 local 로 본다 | 유지 |
+| merge/rebase 활성 | local lane 기준으로 보인다 | diverged target 만 활성 |
+| 실행 의미 | preview 단계에서 divergence 계산 | 유지, 더 명확히 분리 |
+
+즉, “local 이면 무조건 실행 가능”도 아니고, “past commit 이면 무조건 불가”도 아니다.
+로컬 경로 위에 있는가와, target 이 현재 HEAD 와 어떻게 갈라졌는가는 다른 질문이다.
 
 ## 결론
 
