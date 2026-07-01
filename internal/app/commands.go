@@ -179,6 +179,39 @@ func executePushSetUpstream(repo *git.Repo, branch string, limit int) tea.Cmd {
 	}
 }
 
+func executeDeleteBranch(repo *git.Repo, target string, remote bool, limit int) tea.Cmd {
+	return func() tea.Msg {
+		if target == "" {
+			return executedMsg{action: state.ActionDeleteBranch, err: fmt.Errorf("target is empty")}
+		}
+		status, statusErr := repo.Status(context.Background(), limit)
+		if statusErr != nil {
+			return executedMsg{action: state.ActionDeleteBranch, target: target, err: statusErr}
+		}
+		if remote {
+			branch := strings.TrimPrefix(target, "origin/")
+			if branch == "" {
+				return executedMsg{action: state.ActionDeleteBranch, target: target, err: fmt.Errorf("remote branch is empty")}
+			}
+			_, err := repo.DeleteRemoteBranch(context.Background(), "origin", branch)
+			refreshed, refreshErr := repo.Status(context.Background(), limit)
+			if refreshErr != nil {
+				return executedMsg{action: state.ActionDeleteBranch, target: "origin/" + branch, err: refreshErr}
+			}
+			return executedMsg{action: state.ActionDeleteBranch, target: "origin/" + branch, status: refreshed, err: err}
+		}
+		if !status.Detached && status.Branch == target {
+			return executedMsg{action: state.ActionDeleteBranch, target: target, err: fmt.Errorf("current branch cannot be deleted")}
+		}
+		_, err := repo.DeleteBranch(context.Background(), target)
+		refreshed, refreshErr := repo.Status(context.Background(), limit)
+		if refreshErr != nil {
+			return executedMsg{action: state.ActionDeleteBranch, target: target, err: refreshErr}
+		}
+		return executedMsg{action: state.ActionDeleteBranch, target: target, status: refreshed, err: err}
+	}
+}
+
 func previewSelection(repo *git.Repo, rs git.Status, action state.Action, target string) tea.Cmd {
 	return func() tea.Msg {
 		if target == "" {

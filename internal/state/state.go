@@ -26,6 +26,7 @@ const (
 	ActionRebase       Action = "rebase"
 	ActionReset        Action = "reset"
 	ActionCreateBranch Action = "create-branch"
+	ActionDeleteBranch Action = "delete-branch"
 	ActionPush         Action = "push"
 	ActionForcePush    Action = "force-push"
 	ActionSetUpstream  Action = "set-upstream"

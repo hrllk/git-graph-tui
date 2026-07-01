@@ -25,6 +25,14 @@ func (r *Repo) Push(ctx context.Context, branch string, force bool, setUpstream 
 	return r.Run(args...)
 }
 
+func (r *Repo) DeleteBranch(ctx context.Context, branch string) (string, error) {
+	return r.Run("branch", "-d", branch)
+}
+
+func (r *Repo) DeleteRemoteBranch(ctx context.Context, remote, branch string) (string, error) {
+	return r.Run("push", remote, "--delete", branch)
+}
+
 func (r *Repo) worktreeDirty(ctx context.Context) (bool, error) {
 	out, err := r.git(ctx, "status", "--porcelain")
 	if err != nil {

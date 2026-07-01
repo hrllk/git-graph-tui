@@ -17,6 +17,11 @@ func executionDetail(action state.Action, target string, rs git.Status) string {
 		return "Rebase complete. The branch was replayed on top of " + target + "."
 	case state.ActionReset:
 		return "Hard reset complete. HEAD now points at " + target + "."
+	case state.ActionDeleteBranch:
+		if strings.HasPrefix(target, "origin/") {
+			return "Origin branch deleted: " + target + "."
+		}
+		return "Branch deleted: " + target + "."
 	default:
 		return "Action complete."
 	}

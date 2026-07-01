@@ -101,18 +101,20 @@ The current graph strategy is based on `git log` data.
 Once you read the repository this way, operations become easier to reason about.
 You stop guessing which ref is safe to move.
 
-### MVP Scope
+# SORRY THIS NOT A MVP :) 
+
+### ~~MVP Scope~~
 ---
+~~~~
+~~The current implementation is intentionally limited.~~
+~~~~
+~~- the graph is local-branch focused~~
+~~- remote-only branches do not add extra lanes to the main graph~~
+~~- the UI favors branch topology over file-level Git work~~
+~~- the feature set is small enough to understand quickly~~
 
-The current implementation is intentionally limited.
-
-- the graph is local-branch focused
-- remote-only branches do not add extra lanes to the main graph
-- the UI favors branch topology over file-level Git work
-- the feature set is small enough to understand quickly
-
-That is the point.
-This is a maintainer tool, not a full Git shell replacement.
+~~That is the point.~~
+~~This is a maintainer tool, not a full Git shell replacement.~~
 
 ### Keyboard
 ---

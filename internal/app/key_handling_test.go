@@ -115,6 +115,145 @@ func TestCreateBranchShortcutBlockedWhenDirty(t *testing.T) {
 	}
 }
 
+func TestDeleteBranchShortcutOpensConfirmForLocalBranch(t *testing.T) {
+	fixture := newCommandRepo(t)
+	m := testKeyHandlingModel(fixture.repo, git.Status{
+		Root:          fixture.root,
+		Branch:        "main",
+		Head:          fixture.initialHash,
+		LocalBranches: []string{"main", "feature"},
+		GraphCommits:  []git.GraphCommit{{Hash: fixture.initialHash}},
+	})
+	m.activeSection = sectionCurrent
+	m.sectionCursor[sectionCurrent] = 1
+
+	gotModel, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'d'}})
+	got := gotModel.(model)
+	if cmd != nil {
+		t.Fatalf("expected delete shortcut to stay synchronous, got %v", cmd)
+	}
+	if got.status.Mode != state.ModeConfirm {
+		t.Fatalf("expected confirm mode, got %s", got.status.Mode)
+	}
+	if got.status.Action != state.ActionDeleteBranch {
+		t.Fatalf("expected delete-branch action, got %s", got.status.Action)
+	}
+	if got.status.Title != "Delete branch?" {
+		t.Fatalf("expected delete confirm title, got %q", got.status.Title)
+	}
+	if got.status.Selected != "feature" {
+		t.Fatalf("expected local branch target to be stored, got %q", got.status.Selected)
+	}
+
+	gotModel, cmd = got.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	got = gotModel.(model)
+	if cmd == nil {
+		t.Fatal("expected delete confirm acceptance to execute")
+	}
+	if got.status.Mode != state.ModeLoading || got.status.Message != "Deleting branch..." {
+		t.Fatalf("expected delete loading state, got %+v", got.status)
+	}
+}
+
+func TestDeleteBranchShortcutBlocksCurrentBranch(t *testing.T) {
+	fixture := newCommandRepo(t)
+	m := testKeyHandlingModel(fixture.repo, git.Status{
+		Root:          fixture.root,
+		Branch:        "main",
+		Head:          fixture.initialHash,
+		LocalBranches: []string{"main", "feature"},
+		GraphCommits:  []git.GraphCommit{{Hash: fixture.initialHash}},
+	})
+	m.activeSection = sectionCurrent
+	m.sectionCursor[sectionCurrent] = 0
+
+	gotModel, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'d'}})
+	got := gotModel.(model)
+	if cmd != nil {
+		t.Fatalf("expected current-branch delete to stay synchronous, got %v", cmd)
+	}
+	if got.status.Mode != state.ModeBlocked {
+		t.Fatalf("expected blocked mode, got %s", got.status.Mode)
+	}
+}
+
+func TestDeleteBranchShortcutOpensConfirmForOriginBranch(t *testing.T) {
+	fixture := newCommandRepo(t)
+	m := testKeyHandlingModel(fixture.repo, git.Status{
+		Root:           fixture.root,
+		Branch:         "main",
+		Head:           fixture.initialHash,
+		LocalBranches:  []string{"main"},
+		RemoteBranches: []string{"origin/feature"},
+		Remote:         "origin",
+		GraphCommits:   []git.GraphCommit{{Hash: fixture.initialHash}},
+	})
+	m.activeSection = sectionRemote
+	m.sectionCursor[sectionRemote] = 0
+
+	gotModel, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'d'}})
+	got := gotModel.(model)
+	if cmd != nil {
+		t.Fatalf("expected remote delete shortcut to stay synchronous, got %v", cmd)
+	}
+	if got.status.Mode != state.ModeConfirm {
+		t.Fatalf("expected confirm mode, got %s", got.status.Mode)
+	}
+	if got.status.Action != state.ActionDeleteBranch {
+		t.Fatalf("expected delete-branch action, got %s", got.status.Action)
+	}
+	if got.status.Title != "Delete branch?" {
+		t.Fatalf("expected origin delete confirm title, got %q", got.status.Title)
+	}
+	if got.status.Selected != "feature" {
+		t.Fatalf("expected origin branch name to be stored, got %q", got.status.Selected)
+	}
+
+	gotModel, cmd = got.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	got = gotModel.(model)
+	if cmd == nil {
+		t.Fatal("expected remote delete confirm acceptance to execute")
+	}
+	if got.status.Mode != state.ModeLoading || got.status.Message != "Deleting origin branch..." {
+		t.Fatalf("expected remote delete loading state, got %+v", got.status)
+	}
+}
+
+func TestDeleteBranchShortcutOpensConfirmFromGraph(t *testing.T) {
+	fixture := newCommandRepo(t)
+	m := testKeyHandlingModel(fixture.repo, git.Status{
+		Root:          fixture.root,
+		Branch:        "main",
+		Head:          fixture.initialHash,
+		LocalBranches: []string{"main", "feature"},
+		GraphCommits: []git.GraphCommit{
+			{Hash: fixture.initialHash, Graph: "*", Decorations: []string{"main"}},
+			{Hash: "featurehash", Graph: "|", Decorations: []string{"feature"}},
+		},
+	})
+	m.activeSection = sectionGraph
+	m.sectionCursor[sectionGraph] = 1
+	m.graphLaneCursor = 0
+
+	gotModel, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'d'}})
+	got := gotModel.(model)
+	if cmd != nil {
+		t.Fatalf("expected graph delete shortcut to stay synchronous, got %v", cmd)
+	}
+	if got.status.Mode != state.ModeConfirm {
+		t.Fatalf("expected confirm mode, got %s", got.status.Mode)
+	}
+	if got.status.Action != state.ActionDeleteBranch {
+		t.Fatalf("expected delete-branch action, got %s", got.status.Action)
+	}
+	if got.status.Title != "Delete branch?" {
+		t.Fatalf("expected delete confirm title, got %q", got.status.Title)
+	}
+	if got.status.Selected != "feature" {
+		t.Fatalf("expected graph branch target to be stored, got %q", got.status.Selected)
+	}
+}
+
 func TestTargetPickRejectsEmptySelection(t *testing.T) {
 	fixture := newCommandRepo(t)
 	m := testKeyHandlingModel(fixture.repo, git.Status{Root: fixture.root})

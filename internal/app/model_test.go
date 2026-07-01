@@ -764,8 +764,30 @@ func TestRenderActionHelpLinesAreSectionSpecific(t *testing.T) {
 	if !containsLine(graph, "• gg: top         • G: bottom") {
 		t.Fatalf("expected graph actions to use gg shortcut, got %v", graph)
 	}
+	if !strings.Contains(strings.Join(graph, " "), "d: delete branch") {
+		t.Fatalf("expected graph actions to include delete branch, got %v", graph)
+	}
 	if containsLine(graph, "• space: checkout") {
 		t.Fatalf("expected graph actions to exclude checkout, got %v", graph)
+	}
+
+	current := renderActionHelpLines(model{
+		status:        state.New().WithBrowse(),
+		activeSection: sectionCurrent,
+		repoStatus: git.Status{
+			Branch:        "main",
+			LocalBranches: []string{"main", "feature"},
+		},
+		sectionCursor: map[graphSection]int{
+			sectionCurrent: 0,
+		},
+	})
+	currentJoined := strings.Join(current, " ")
+	if !strings.Contains(currentJoined, "d: delete branch") {
+		t.Fatalf("expected current actions to include delete branch, got %v", current)
+	}
+	if !strings.Contains(currentJoined, "(current branch)") {
+		t.Fatalf("expected current branch delete to be disabled, got %v", current)
 	}
 
 	remote := renderActionHelpLines(model{

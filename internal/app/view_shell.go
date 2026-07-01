@@ -79,30 +79,7 @@ func renderAppView(m model) string {
 	centeredBody := applyOuterMargins(body, bodyWidth, bodyHeight, hMargin, topMargin, max(bottomMargin-1, 0))
 
 	if m.status.Mode == state.ModeConfirm || m.status.Mode == state.ModeResetModePick {
-		titleStyle := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("205"))
-		descStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("252"))
-		helpStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("241"))
-		popupBox := lipgloss.NewStyle().
-			Border(lipgloss.RoundedBorder()).
-			BorderForeground(lipgloss.Color("205")).
-			Padding(1, 2).
-			Width(50).
-			Align(lipgloss.Center)
-		popupTitle := m.status.Title
-		if popupTitle == "" || popupTitle == "Confirm" {
-			popupTitle = "Continue?"
-		}
-		helpText := "y: yes  •  n: no"
-		if m.status.Action == state.ActionPull && !m.pullIsFastForward {
-			helpText = "m: merge  •  r: rebase  •  esc: cancel"
-		} else if m.status.Mode == state.ModeResetModePick {
-			helpText = "s: soft  •  m: mixed  •  h: hard  •  enter: execute  •  esc: back"
-		}
-		popupContent := popupBox.Render(
-			titleStyle.Render(popupTitle) + "\n\n" +
-				descStyle.Render(m.status.Detail) + "\n\n" +
-				helpStyle.Render(helpText),
-		)
+		popupContent := renderConfirmPopup(m)
 		centeredBody = overlayPopup(centeredBody, popupContent)
 	}
 	if m.status.Mode == state.ModeLoading && !m.branchOpen {
@@ -124,6 +101,50 @@ func renderAppView(m model) string {
 
 	shell := centeredBody + "\n"
 	return lipgloss.Place(m.width, m.height, lipgloss.Center, lipgloss.Top, shell)
+}
+
+func renderConfirmPopup(m model) string {
+	titleStyle := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("205"))
+	descStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("252"))
+	helpStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("241"))
+
+	popupTitle := m.status.Title
+	if popupTitle == "" || popupTitle == "Confirm" {
+		popupTitle = "Continue?"
+	}
+
+	helpText := "y: yes  •  n: no"
+	if m.status.Action == state.ActionPull && !m.pullIsFastForward {
+		helpText = "m: merge  •  r: rebase  •  esc: cancel"
+	} else if m.status.Action == state.ActionDeleteBranch {
+		helpText = "y: delete  •  n: cancel"
+	} else if m.status.Mode == state.ModeResetModePick {
+		helpText = "s: soft  •  m: mixed  •  h: hard  •  enter: execute  •  esc: back"
+	}
+
+	detailWidth := lipgloss.Width(m.status.Detail)
+	titleWidth := lipgloss.Width(popupTitle)
+	helpWidth := lipgloss.Width(helpText)
+	boxWidth := max(max(titleWidth, detailWidth), helpWidth) + 6
+	if boxWidth < 34 {
+		boxWidth = 34
+	}
+	if boxWidth > 50 {
+		boxWidth = 50
+	}
+
+	popupBox := lipgloss.NewStyle().
+		Border(lipgloss.RoundedBorder()).
+		BorderForeground(lipgloss.Color("205")).
+		Padding(1, 2).
+		Width(boxWidth).
+		Align(lipgloss.Center)
+
+	return popupBox.Render(
+		titleStyle.Render(popupTitle) + "\n\n" +
+			descStyle.Render(m.status.Detail) + "\n\n" +
+			helpStyle.Render(helpText),
+	)
 }
 
 func (m model) renderRightRail(width, height int) string {
