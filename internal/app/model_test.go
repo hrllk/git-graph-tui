@@ -553,8 +553,8 @@ func TestRenderContextContentSplitsInfoAndActions(t *testing.T) {
 	if !strings.Contains(got, "target:") || !strings.Contains(got, "worktree:") {
 		t.Fatalf("expected left info column to include current branch details, got %q", got)
 	}
-	if !strings.Contains(got, "Context Details") || !strings.Contains(got, "Context Actions") {
-		t.Fatalf("expected context header to prefix details/actions with the focused section name, got %q", got)
+	if !strings.Contains(got, "Local Details") || !strings.Contains(got, "Local Actions") {
+		t.Fatalf("expected local header to prefix details/actions with the focused section name, got %q", got)
 	}
 	if !strings.Contains(got, "• space: checkout") || !strings.Contains(got, "• p: pull") {
 		t.Fatalf("expected right actions column to include browse actions, got %q", got)
@@ -600,7 +600,7 @@ func TestRenderContextContentUsesSectionNameInHeaders(t *testing.T) {
 		active     graphSection
 		wantPrefix string
 	}{
-		{name: "current", active: sectionCurrent, wantPrefix: "Context"},
+		{name: "current", active: sectionCurrent, wantPrefix: "Local"},
 		{name: "graph", active: sectionGraph, wantPrefix: "Graph"},
 	}
 	for _, tt := range tests {
@@ -741,20 +741,20 @@ func TestRenderAppViewUsesCenteredHeaderAndMainLayout(t *testing.T) {
 	}
 
 	got := renderAppView(m)
-	for _, want := range []string{"Global", "Context", "Graph", "Remote", "Tags"} {
+	for _, want := range []string{"Global", "Context", "Graph", "Local", "Remote", "Tags"} {
 		if !strings.Contains(got, want) {
 			t.Fatalf("expected view to contain %q, got %q", want, got)
 		}
 	}
 
-	localIdx := strings.Index(got, "Context")
+	localIdx := strings.Index(got, "Local")
 	remoteIdx := strings.Index(got, "Remote")
 	tagsIdx := strings.Index(got, "Tags")
 	if localIdx < 0 || remoteIdx < 0 || tagsIdx < 0 {
 		t.Fatalf("expected right rail sections to appear in output, got %q", got)
 	}
 	if !(localIdx < remoteIdx && remoteIdx < tagsIdx) {
-		t.Fatalf("expected Context / Remote / Tags to stack in order, got %d / %d / %d", localIdx, remoteIdx, tagsIdx)
+		t.Fatalf("expected Local / Remote / Tags to stack in order, got %d / %d / %d", localIdx, remoteIdx, tagsIdx)
 	}
 }
 
@@ -1008,8 +1008,8 @@ func TestOverlayPopupKeepsBaseWidthStable(t *testing.T) {
 }
 
 func TestSectionNameUsesContextLabel(t *testing.T) {
-	if got := sectionName(sectionCurrent); got != "Context" {
-		t.Fatalf("expected sectionCurrent to be labeled Context, got %q", got)
+	if got := sectionName(sectionCurrent); got != "Local" {
+		t.Fatalf("expected sectionCurrent to be labeled Local, got %q", got)
 	}
 }
 
@@ -1992,7 +1992,7 @@ func TestRenderRightRailRendersStackedCards(t *testing.T) {
 	if len(lines) != 12 {
 		t.Fatalf("expected right rail to keep stacked card height, got %d lines: %q", len(lines), got)
 	}
-	for _, want := range []string{"Context", "Remote", "Tags"} {
+	for _, want := range []string{"Local", "Remote", "Tags"} {
 		if !strings.Contains(got, want) {
 			t.Fatalf("expected right rail to contain %q, got %q", want, got)
 		}
