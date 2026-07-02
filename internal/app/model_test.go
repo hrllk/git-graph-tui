@@ -7,6 +7,7 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+	"github.com/charmbracelet/x/ansi"
 
 	"hrllk/graphkeeper/internal/git"
 	"hrllk/graphkeeper/internal/graph"
@@ -169,9 +170,39 @@ func TestGraphContentMatchesStackedSideRailContent(t *testing.T) {
 	hMargin, topMargin, bottomMargin := layoutShellMargins(m)
 	_, bodyHeight := layoutShellBodySize(m, hMargin, topMargin, bottomMargin)
 	graphRailHeight := layoutGraphRailHeight(bodyHeight)
-	want := graphRailHeight - 3
+	want := graphRailHeight - 2
 	if got := graphContentHeightForModel(&m); got != want {
 		t.Fatalf("expected graph content height %d, got %d", want, got)
+	}
+}
+
+func TestRenderTitleStripFitsVisibleWidth(t *testing.T) {
+	got := renderTitleStrip(baseBox, "Global", 20)
+	if width := lipgloss.Width(got); width != 22 {
+		t.Fatalf("expected title strip to use adjusted width 22, got width=%d strip=%q", width, got)
+	}
+	if !strings.Contains(got, "Global") {
+		t.Fatalf("expected title strip to contain title, got %q", got)
+	}
+	if !strings.HasPrefix(ansi.Strip(got), "╭") {
+		t.Fatalf("expected title strip to start at left edge, got %q", got)
+	}
+}
+
+func TestRenderFloatingTitlePopupPlacesTitleOnBorder(t *testing.T) {
+	popupBox := lipgloss.NewStyle().
+		Border(lipgloss.RoundedBorder()).
+		BorderForeground(lipgloss.Color("205")).
+		Padding(1, 2).
+		Width(40).
+		Align(lipgloss.Center)
+
+	got := renderFloatingTitlePopup(popupBox, "Confirm", "body", 40)
+	if strings.Contains(got, "\nConfirm\n") {
+		t.Fatalf("expected popup title to move out of body, got %q", got)
+	}
+	if !strings.Contains(got, "Confirm") || !strings.Contains(got, "body") {
+		t.Fatalf("expected popup helper to keep title and body visible, got %q", got)
 	}
 }
 
@@ -229,7 +260,7 @@ func TestGraphPageSizeAccountsForConnectorBudget(t *testing.T) {
 	if got <= 0 {
 		t.Fatalf("expected positive graph page size, got %d", got)
 	}
-	if got != 5 {
+	if got != 6 {
 		t.Fatalf("expected connector-aware page size to account for two connector lines, got %d", got)
 	}
 }
@@ -244,6 +275,16 @@ func TestRenderAppViewKeepsShellPlacementFullWidth(t *testing.T) {
 	for _, want := range []string{"Global", "Browse", "Actions", "tab: next section", "f: fetch"} {
 		if !strings.Contains(got, want) {
 			t.Fatalf("expected render to contain %q, got %q", want, got)
+		}
+	}
+	for _, want := range []string{"[1] Graph", "[2] Local", "[3] Remote", "[4] Tags"} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("expected render to contain %q, got %q", want, got)
+		}
+	}
+	for _, bad := range []string{"\nGlobal\n", "\nContext\n", "\n[1] Graph\n", "\n[2] Local\n", "\n[3] Remote\n", "\n[4] Tags\n"} {
+		if strings.Contains(got, bad) {
+			t.Fatalf("expected title %q to move out of body, got %q", bad, got)
 		}
 	}
 }
@@ -2255,6 +2296,9 @@ func TestRenderResetModePopupUsesSingleModeList(t *testing.T) {
 	}
 	if !strings.Contains(got, "Reset mode") || !strings.Contains(got, "Choose a reset mode.") || !strings.Contains(got, "esc: back") {
 		t.Fatalf("expected reset popup to include title, body, and esc help, got %q", got)
+	}
+	if strings.Contains(got, "\nReset mode\n") {
+		t.Fatalf("expected reset popup title to sit on the border, got %q", got)
 	}
 }
 

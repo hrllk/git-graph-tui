@@ -49,11 +49,19 @@ func renderAppView(m model) string {
 	graphRailHeight := layoutGraphRailHeight(bodyHeight)
 
 	globalWidth, contextWidth := splitPaneWidths(bodyWidth)
-	globalBox := baseBox.Width(globalWidth).Height(headerHeight).Render(
-		"Global\n" + m.renderGlobalContent(max(globalWidth-4, 0), max(headerHeight-3, 0)),
+	globalBox := renderFloatingTitleFrame(
+		baseBox.Width(globalWidth).Height(headerHeight),
+		"Global",
+		m.renderGlobalContent(max(globalWidth-4, 0), max(headerHeight-2, 0)),
+		globalWidth,
+		headerHeight,
 	)
-	contextBox := baseBox.Width(contextWidth).Height(headerHeight).Render(
-		"Context\n" + m.renderContextContent(max(contextWidth-4, 0), max(headerHeight-3, 0)),
+	contextBox := renderFloatingTitleFrame(
+		baseBox.Width(contextWidth).Height(headerHeight),
+		"Context",
+		m.renderContextContent(max(contextWidth-4, 0), max(headerHeight-2, 0)),
+		contextWidth,
+		headerHeight,
 	)
 	headerRow := lipgloss.JoinHorizontal(lipgloss.Top, globalBox, contextBox)
 
@@ -69,8 +77,12 @@ func renderAppView(m model) string {
 	}
 	rightWidth := bodyWidth - graphWidth
 	graphContentHeight := graphContentHeightForModel(&m)
-	graphBox := m.getBoxStyle(sectionGraph).Width(graphWidth).Height(graphRailHeight).Render(
-		"Graph\n" + m.renderGraphContent(max(graphWidth-4, 0), graphContentHeight),
+	graphBox := renderFloatingTitleFrame(
+		m.getBoxStyle(sectionGraph).Width(graphWidth).Height(graphRailHeight),
+		"[1] Graph",
+		m.renderGraphContent(max(graphWidth-4, 0), graphContentHeight),
+		graphWidth,
+		graphRailHeight,
 	)
 	rightRail := m.renderRightRail(rightWidth, graphRailHeight)
 	graphRow := lipgloss.JoinHorizontal(lipgloss.Top, graphBox, rightRail)
@@ -117,7 +129,6 @@ func popupWidthForBody(bodyWidth, minWidth, maxWidth int) int {
 }
 
 func renderConfirmPopup(m model, bodyWidth int) string {
-	titleStyle := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("205"))
 	descStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("252"))
 	helpStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("241"))
 	popupBox := lipgloss.NewStyle().
@@ -140,15 +151,18 @@ func renderConfirmPopup(m model, bodyWidth int) string {
 	} else if m.status.Action == state.ActionCleanWorkingTree {
 		helpText = "y: clean  •  n: cancel"
 	}
-	return popupBox.Render(
-		titleStyle.Render(popupTitle) + "\n\n" +
-			descStyle.Render(m.status.Detail) + "\n\n" +
+	return renderFloatingTitlePopup(
+		popupBox,
+		popupTitle,
+		strings.Join([]string{
+			descStyle.Render(m.status.Detail),
 			helpStyle.Render(helpText),
+		}, "\n\n"),
+		popupWidthForBody(bodyWidth, 32, 54),
 	)
 }
 
 func renderResetModePopup(bodyWidth int) string {
-	titleStyle := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("205"))
 	bodyStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("252"))
 	helpStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("241"))
 	popupBox := lipgloss.NewStyle().
@@ -157,16 +171,19 @@ func renderResetModePopup(bodyWidth int) string {
 		Padding(1, 2).
 		Width(popupWidthForBody(bodyWidth, 32, 50)).
 		Align(lipgloss.Center)
-	return popupBox.Render(
-		titleStyle.Render("Reset mode") + "\n" +
-			bodyStyle.Render("Choose a reset mode.") + "\n\n" +
-			bodyStyle.Render("s: soft  •  m: mixed  •  h: hard") + "\n\n" +
+	return renderFloatingTitlePopup(
+		popupBox,
+		"Reset mode",
+		strings.Join([]string{
+			bodyStyle.Render("Choose a reset mode."),
+			bodyStyle.Render("s: soft  •  m: mixed  •  h: hard"),
 			helpStyle.Render("esc: back"),
+		}, "\n\n"),
+		popupWidthForBody(bodyWidth, 32, 50),
 	)
 }
 
 func renderLoadingPopup(m model, bodyWidth int) string {
-	titleStyle := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("205"))
 	descStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("252"))
 	popupBox := lipgloss.NewStyle().
 		Border(lipgloss.RoundedBorder()).
@@ -174,15 +191,18 @@ func renderLoadingPopup(m model, bodyWidth int) string {
 		Padding(1, 2).
 		Width(popupWidthForBody(bodyWidth, 28, 44)).
 		Align(lipgloss.Center)
-	return popupBox.Render(
-		titleStyle.Render("Working...") + "\n\n" +
-			descStyle.Render(m.status.Message) + "\n" +
+	return renderFloatingTitlePopup(
+		popupBox,
+		"Working...",
+		strings.Join([]string{
+			descStyle.Render(m.status.Message),
 			descStyle.Render(m.status.Detail),
+		}, "\n"),
+		popupWidthForBody(bodyWidth, 28, 44),
 	)
 }
 
 func renderBranchInputPopup(m model, bodyWidth int) string {
-	titleStyle := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("205"))
 	descStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("252"))
 	helpStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("241"))
 	popupBox := lipgloss.NewStyle().
@@ -200,7 +220,6 @@ func renderBranchInputPopup(m model, bodyWidth int) string {
 		base = "-"
 	}
 	lines := []string{
-		titleStyle.Render("Create branch"),
 		descStyle.Render("Enter a branch name."),
 		"",
 		descStyle.Render("name: " + draft),
@@ -212,21 +231,44 @@ func renderBranchInputPopup(m model, bodyWidth int) string {
 	}
 	lines = append(lines, "")
 	lines = append(lines, helpStyle.Render("esc: back"))
-	return popupBox.Render(strings.Join(lines, "\n"))
+	return renderFloatingTitlePopup(
+		popupBox,
+		"Create branch",
+		strings.Join(lines, "\n"),
+		popupWidthForBody(bodyWidth, 36, 56),
+	)
 }
 
 func (m model) renderRightRail(width, height int) string {
 	if width <= 0 || height <= 0 {
 		return ""
 	}
-	sectionHeight := height - 8
+	sectionHeight := height - 6
 	if sectionHeight < 1 {
 		sectionHeight = 1
 	}
 	localHeight, remoteHeight, tagsHeight := splitThreeHeights(sectionHeight)
-	localBox := m.getBoxStyle(sectionCurrent).Width(width).Height(localHeight).Render("Local\n" + m.renderSectionContent(sectionCurrent, max(width-4, 0), max(localHeight-3, 0)))
-	remoteBox := m.getBoxStyle(sectionRemote).Width(width).Height(remoteHeight).Render("Remote\n" + m.renderSectionContent(sectionRemote, max(width-4, 0), max(remoteHeight-3, 0)))
-	tagsBox := m.getBoxStyle(sectionTags).Width(width).Height(tagsHeight).Render("Tags\n" + m.renderSectionContent(sectionTags, max(width-4, 0), max(tagsHeight-3, 0)))
+	localBox := renderFloatingTitleFrame(
+		m.getBoxStyle(sectionCurrent).Width(width).Height(localHeight),
+		"[2] Local",
+		m.renderSectionContent(sectionCurrent, max(width-4, 0), max(localHeight-2, 0)),
+		width,
+		localHeight,
+	)
+	remoteBox := renderFloatingTitleFrame(
+		m.getBoxStyle(sectionRemote).Width(width).Height(remoteHeight),
+		"[3] Remote",
+		m.renderSectionContent(sectionRemote, max(width-4, 0), max(remoteHeight-2, 0)),
+		width,
+		remoteHeight,
+	)
+	tagsBox := renderFloatingTitleFrame(
+		m.getBoxStyle(sectionTags).Width(width).Height(tagsHeight),
+		"[4] Tags",
+		m.renderSectionContent(sectionTags, max(width-4, 0), max(tagsHeight-2, 0)),
+		width,
+		tagsHeight,
+	)
 	return lipgloss.JoinVertical(lipgloss.Left, localBox, remoteBox, tagsBox)
 }
 

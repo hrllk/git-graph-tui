@@ -3,7 +3,7 @@
 ## 목적
 
 현재 카드형 패널은 제목이 모두 카드 내부 첫 줄에 들어간다.
-이 문서는 제목을 카드 내부가 아니라 상단 border 와 겹치게 보이도록 바꾸는 구현 계획이다.
+이 문서는 제목을 카드 내부가 아니라 상단 border 와 겹쳐 보이도록 바꾸는 구현 계획이다.
 
 핵심 목표는 다음과 같다.
 
@@ -11,6 +11,12 @@
 2. 기존 패널의 width / height 계약은 최대한 유지한다.
 3. 공통 helper 로 묶어서 모든 카드형 패널에 같은 규칙을 적용한다.
 4. 기존 렌더링 로직과 데이터 로직은 건드리지 않는다.
+
+## 결론
+
+이 변경은 구현 가능하다.
+다만 실제 적용 대상은 `View()` 경로의 카드형 패널과 popup 렌더러로 한정해야 한다.
+`renderDetailContent()` 는 현재 UI 경로에서 사용되지 않고 테스트에서만 호출되므로, 이번 변경의 1차 대상이 아니다.
 
 ## 현재 사실
 
@@ -23,8 +29,8 @@
 현재 관련 코드 위치는 다음과 같다.
 
 - `internal/app/view_shell.go`
-- `internal/app/view_sections.go`
 - `internal/app/view_detail.go`
+- `internal/app/view_layout.go`
 
 현재 helper 는 title 을 card 내부 첫 줄로 넣는 방식이다.
 
@@ -105,7 +111,9 @@ contentHeight := max(headerHeight-2, 0)
 ```
 
 이 규칙은 패널 내부에 padding 이 없는 카드에 우선 적용한다.
-popup 계열은 padding 이 있지만, 동일하게 "title 1줄이 body 내부에서 빠진다"는 contract 를 따른다.
+popup 계열은 padding 이 있지만, 동일하게 title 1줄이 body 내부에서 빠진다는 contract 를 따른다.
+
+다만 popup 은 body 높이를 고정값으로 맞추는 shell 카드와 다르게 자연 높이 렌더링을 쓰므로, helper 를 분리해서 다루는 것이 안전하다.
 
 ### 3. 공통 helper 는 모든 카드형 패널에서 재사용해야 한다
 
@@ -144,14 +152,12 @@ func renderTitleStrip(style lipgloss.Style, title string, width int) string {
 		title = " "
 	}
 
-	// title 이 너무 길면 border 를 깨지 않도록 먼저 자른다.
 	available := width - lipgloss.Width(border.TopLeft) - lipgloss.Width(border.TopRight) - 4
 	if available < 1 {
 		available = 1
 	}
 	title = fitVisibleWidth(title, available)
 
-	// border 상단은 title 을 중앙에 두고 양쪽을 border rune 으로 채운다.
 	base := width - lipgloss.Width(border.TopLeft) - lipgloss.Width(border.TopRight)
 	if base < 0 {
 		base = 0
@@ -173,6 +179,7 @@ func renderTitleStrip(style lipgloss.Style, title string, width int) string {
 ```
 
 이 helper 는 border rune 을 직접 조립하므로, `lipgloss` 에 title-on-border 전용 API 가 없어도 동작한다.
+단, border 문자만 복사하지 말고 원래 style 에 설정된 border foreground/background 색도 유지해야 한다.
 
 ### 2. body renderer 는 top border 를 비워둔 스타일로 렌더한다
 
@@ -214,6 +221,7 @@ func renderFloatingTitlePopup(style lipgloss.Style, title string, body string, w
 ```
 
 실제 구현에서는 `Width()` / `Height()` 호출이 기존 style contract 와 충돌하지 않도록, 현재 call site 가 넘기던 width / height 값을 그대로 받아서 내부에서만 조정한다.
+popup 은 높이 고정이 아니므로 `Height()` 를 새로 강제하지 않는다.
 
 ### 3. call site 를 교체한다
 
@@ -300,30 +308,40 @@ lines := []string{
 }
 ```
 
-이 작업이 필요한 파일은 다음과 같다.
+이 작업이 필요한 실제 파일은 다음과 같다.
 
-- `internal/app/view_sections.go`
 - `internal/app/view_detail.go`
 - `internal/app/view_shell.go`
+
+`renderGlobalContent()` 와 `renderContextContent()` 는 `view_detail.go` 에 있다.
+`renderSectionContent()` 는 이미 body 전용이므로 변경 대상이 아니다.
 
 ## 상세 적용 순서
 
 ### `internal/app/view_shell.go`
 
-1. `renderFloatingTitleFrame` 와 `renderTitleStrip` 을 추가한다.
+1. `renderFloatingTitleFrame` 와 `renderFloatingTitlePopup` 와 `renderTitleStrip` 을 추가한다.
 2. `Global`, `Context`, `Graph` call site 를 교체한다.
-3. popup 렌더링을 body string + helper 조합으로 바꾼다.
-
-### `internal/app/view_sections.go`
-
-1. `renderGlobalContent()` 에서 내부 title line 을 제거한다.
-2. `renderContextContent()` 의 내부 title line 을 제거한다.
-3. `renderSplitColumns()` 에 넘기는 left / right lines 는 body 전용으로 만든다.
+3. `Local`, `Remote`, `Tags` call site 를 교체한다.
+4. popup 렌더링을 body string + helper 조합으로 바꾼다.
 
 ### `internal/app/view_detail.go`
 
-1. `renderDetailContent()` 에서 `Repo`, `Actions` 같은 내부 title line 을 제거한다.
-2. 이 파일이 outer card title 을 직접 그리지 않도록 정리한다.
+1. `renderGlobalContent()` 에서 내부 title line 을 제거한다.
+2. `renderContextContent()` 의 내부 title line 을 제거한다.
+3. `renderContextContent()` 에 넘기는 left / right lines 는 body 전용으로 만든다.
+4. `renderDetailContent()` 는 테스트용 경로이므로 이번 변경의 1차 대상에서 제외한다.
+5. 나중에 상세 패널을 실제 UI 에 붙일 경우 같은 helper 를 재사용한다.
+
+### `internal/app/view_layout.go`
+
+1. `overlayPopup()` 와 body line count 계약이 타이틀 위치 변경 후에도 유지되는지 확인한다.
+2. 필요하면 title strip 테스트를 지원하는 작은 helper 를 이 파일에 둔다.
+
+### `internal/app/view_sections.go`
+
+1. `renderSectionContent()` 는 body 전용이므로 변경하지 않는다.
+2. 이 파일은 title overlap 변경의 대상이 아니다.
 
 ## 테스트 계획
 
@@ -334,7 +352,7 @@ lines := []string{
 ```go
 func TestRenderAppViewPlacesPanelTitleOnBorder(t *testing.T) {
 	m := model{
-		width: 140,
+		width:  140,
 		height: 60,
 		status: state.New().WithBrowse(),
 	}
@@ -343,8 +361,11 @@ func TestRenderAppViewPlacesPanelTitleOnBorder(t *testing.T) {
 	if strings.Contains(got, "\nGlobal\n") {
 		t.Fatal("expected Global title to move out of body")
 	}
-	if !strings.Contains(got, "Global") {
-		t.Fatal("expected Global title to remain visible")
+	if strings.Contains(got, "\nContext\n") || strings.Contains(got, "\nGraph\n") {
+		t.Fatal("expected other panel titles to move out of body as well")
+	}
+	if !strings.Contains(got, "Global") || !strings.Contains(got, "Context") || !strings.Contains(got, "Graph") {
+		t.Fatal("expected top titles to remain visible")
 	}
 }
 ```
@@ -354,12 +375,15 @@ func TestRenderAppViewPlacesPanelTitleOnBorder(t *testing.T) {
 ```go
 func TestFloatingTitleCardKeepsHeightContract(t *testing.T) {
 	// title line 이 body 를 먹지 않는지 확인한다.
+	// renderFloatingTitleFrame() 가 기존 Render("Title\n"+body) 대비
+	// body content 를 1줄 더 보여주는지 검증한다.
 }
 ```
 
 ### 3. popup title 도 같은 helper 를 쓰는지 확인
 
 popup title 은 `Confirm`, `Reset mode`, `Working...`, `Create branch`, `Alert` 의 visual 형태가 동일해야 한다.
+popup 은 padding 과 자연 높이가 있으므로, title strip 과 body 사이의 spacing 만 일관되게 맞추면 된다.
 
 ### 4. 좁은 width 에서 title 이 truncate 되는지 확인
 
@@ -383,3 +407,9 @@ title 이 너무 길면 border 를 깨지 않고 잘려야 한다.
 
 이 변경은 데이터 로직 변경이 아니라 렌더링 계약 변경이다.
 따라서 구현 시에는 `state`, `actions`, `navigation` 쪽을 건드리지 말고 `view_*` 계층에만 국한하는 것이 맞다.
+
+### 검토 메모
+
+- `renderDetailContent()` 는 현재 `View()` 경로에서 쓰이지 않고 테스트에서만 호출된다. 따라서 실제 UI 변경 범위는 `renderAppView()` 와 popup 렌더러에 먼저 한정하는 편이 맞다.
+- `renderTitleStrip()` 를 손으로 조립할 때는 `BorderForeground` 색도 함께 보존해야 한다. 현재 `baseBox`, `activeBox`, popup 박스는 border 색을 따로 두고 있어서 rune 만 붙이면 색이 빠질 수 있다.
+- 기존 테스트는 제목이 보이는지만 확인하고 제목이 border line 으로 이동했는지는 확인하지 못한다. 구현 후에는 `"\nGlobal\n"` 같은 내부 title 패턴이 사라졌는지, 그리고 right rail / popup 높이가 유지되는지까지 확인하는 테스트가 필요하다.

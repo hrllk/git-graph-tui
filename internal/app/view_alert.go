@@ -34,7 +34,6 @@ func blockedAlertContent(s state.Status) alertContent {
 }
 
 func renderAlertPopup(alert alertContent, bodyWidth int) string {
-	titleStyle := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("205"))
 	descStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("252"))
 	helpStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("241"))
 	popupBox := lipgloss.NewStyle().
@@ -45,11 +44,14 @@ func renderAlertPopup(alert alertContent, bodyWidth int) string {
 		Align(lipgloss.Center)
 
 	lines := []string{
-		titleStyle.Render(alert.Title),
-		"",
 		descStyle.Render(alert.Description),
 		"",
 		helpStyle.Render("esc/enter: dismiss"),
 	}
-	return popupBox.Render(strings.Join(lines, "\n"))
+	return renderFloatingTitlePopup(
+		popupBox,
+		alert.Title,
+		strings.Join(lines, "\n"),
+		popupWidthForBody(bodyWidth, 28, 50),
+	)
 }

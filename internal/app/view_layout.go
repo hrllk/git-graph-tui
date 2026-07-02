@@ -84,7 +84,7 @@ func graphBoxHeightForModel(m *model) int {
 
 func graphContentHeightForModel(m *model) int {
 	railHeight := graphBoxHeightForModel(m)
-	contentHeight := railHeight - 3
+	contentHeight := railHeight - 2
 	if contentHeight < 1 {
 		return 1
 	}
@@ -229,6 +229,102 @@ func fitLineWidth(value string, width int) string {
 		return ansi.Truncate(value, width, "")
 	}
 	return padRight(value, width)
+}
+
+func renderTitleStrip(style lipgloss.Style, title string, width int) string {
+	border, hasTop, _, _, _ := style.GetBorder()
+	if !hasTop || width <= 0 {
+		return fitVisibleWidth(title, width)
+	}
+
+	stripWidth := width + 2
+	if stripWidth < 1 {
+		stripWidth = 1
+	}
+
+	title = strings.TrimSpace(title)
+	if title == "" {
+		title = " "
+	}
+
+	leftWidth := lipgloss.Width(border.TopLeft)
+	rightWidth := lipgloss.Width(border.TopRight)
+	innerWidth := stripWidth - leftWidth - rightWidth
+	if innerWidth <= 0 {
+		return fitVisibleWidth(title, stripWidth)
+	}
+	if innerWidth < 3 {
+		return fitVisibleWidth(title, stripWidth)
+	}
+
+	maxTitleWidth := innerWidth - 2
+	if maxTitleWidth < 1 {
+		maxTitleWidth = 1
+	}
+	title = fitVisibleWidth(title, maxTitleWidth)
+	titleWidth := lipgloss.Width(title)
+	if titleWidth+2 > innerWidth {
+		return fitVisibleWidth(title, stripWidth)
+	}
+
+	titleText := "\x1b[1m" + title + "\x1b[22m"
+	fillWidth := innerWidth - titleWidth - 2
+	leftFill := 2
+	if leftFill > fillWidth {
+		leftFill = fillWidth
+	}
+	if leftFill < 1 {
+		leftFill = 1
+	}
+	rightFill := fillWidth - leftFill
+	if rightFill < 0 {
+		rightFill = 0
+		leftFill = fillWidth
+	}
+	line := border.TopLeft +
+		strings.Repeat(border.Top, leftFill) +
+		" " + titleText + " " +
+		strings.Repeat(border.Top, rightFill) +
+		border.TopRight
+
+	return renderBorderLine(line, style)
+}
+
+func renderBorderLine(line string, style lipgloss.Style) string {
+	borderStyle := lipgloss.NewStyle()
+	if c := style.GetBorderTopForeground(); c != nil {
+		borderStyle = borderStyle.Foreground(c)
+	}
+	if c := style.GetBorderTopBackground(); c != nil {
+		borderStyle = borderStyle.Background(c)
+	}
+	return borderStyle.Render(line)
+}
+
+func renderFloatingTitleFrame(style lipgloss.Style, title, body string, width, height int) string {
+	if width <= 0 || height <= 0 {
+		return ""
+	}
+
+	titleLine := renderTitleStrip(style, title, width)
+	bodyStyle := style.BorderTop(false)
+	bodyHeight := height
+	if bodyHeight < 1 {
+		bodyHeight = 1
+	}
+	bodyBlock := bodyStyle.Width(width).Height(bodyHeight).Render(body)
+	return titleLine + "\n" + bodyBlock
+}
+
+func renderFloatingTitlePopup(style lipgloss.Style, title, body string, width int) string {
+	if width <= 0 {
+		return ""
+	}
+
+	titleLine := renderTitleStrip(style, title, width)
+	bodyStyle := style.BorderTop(false)
+	bodyBlock := bodyStyle.Width(width).Render(body)
+	return titleLine + "\n" + bodyBlock
 }
 
 func renderSplitColumns(leftLines, rightLines []string, width, height int) string {
